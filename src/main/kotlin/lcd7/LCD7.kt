@@ -24,6 +24,9 @@ enum class Segment(val onValue: Byte) {
    VERT_LOWER_LEFT((1 shl 5).toByte()),
    VERT_LOWER_RIGHT((1 shl 6).toByte()),
    ;
+
+   inline val isVertical: Boolean
+      get() = this == VERT_UPPER_LEFT || this == VERT_LOWER_LEFT || this == VERT_UPPER_RIGHT || this == VERT_LOWER_RIGHT
 }
 
 /**
@@ -282,6 +285,9 @@ class TimeDisplayObservation(
       }
       return true
    }
+
+   // To allow static extension functions.
+   companion object {}
 
    override fun toString(): String {
       return "TimeDisplayObservation(hourTensDigitObservation=$hourTensDigitObservation, hourOnesDigitObservation=$hourOnesDigitObservation, minuteTensDigitObservation=$minuteTensDigitObservation, minuteOnesDigitObservation=$minuteOnesDigitObservation, upperColonOn=$upperColonOn, lowerColonOn=$lowerColonOn)"

@@ -6,12 +6,15 @@ import lcd7.DigitObservation
 import lcd7.SegmentCondition.*
 import lcd7.TimeDisplayObservation
 import org.junit.jupiter.api.Test
+import util.StringOutputStream
+import java.io.PrintStream
+import java.io.StringBufferInputStream
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 // Two test cases given in the problem statement.
 class ClockBreakingTest {
-   @Test fun sampleTest1() {
+   @Test fun sampleTest1Programmatic() {
       val assessment = assessTimeDisplay(listOf(
          TimeDisplayObservation(
             hourTensDigitObservation = DigitObservation.fromDigit(Digit.Null),
@@ -50,7 +53,48 @@ class ClockBreakingTest {
       ), assessment)
    }
 
-   @Test fun sampleTest2() {
+   @Test fun sampleTest1IO() {
+      val sis = StringBufferInputStream("""
+         3
+         ......XX.....XX...XX.
+         .....X..X...X..X....X
+         .....X..X.X.X..X....X
+         .............XX...XX.
+         .....X..X......X.X..X
+         .....X..X......X.X..X
+         ......XX.....XX...XX.
+
+         ......XX.....XX...XX.
+         .....X..X...X..X....X
+         .....X..X.X.X..X....X
+         .............XX...XX.
+         .....X..X......X.X..X
+         .....X..X......X.X..X
+         ......XX.....XX...XX.
+
+         .............XX...XX.
+         ........X...X..X....X
+         ........X.X.X..X....X
+         .............XX......
+         ........X...X..X.X..X
+         ........X...X..X.X..X
+         ......XX.....XX...XX.
+      """.trimIndent())
+      val sos = StringOutputStream()
+
+      assessTimeDisplayIO(sis, sos)
+      assertEquals("""
+         .??...WW.....??...??.
+         ?..?.W..?...?..1.0..?
+         ?..?.W..?.?.?..1.0..?
+         .??...??.....11...WW.
+         ?..?.W..?.0.W..?.1..?
+         ?..?.W..?...W..?.1..?
+         .??...11.....??...??.
+      """.trimIndent() + '\n', sos.toString())
+   }
+
+   @Test fun sampleTest2Programmatic() {
       val assessment = assessTimeDisplay(listOf(
          TimeDisplayObservation(
             hourTensDigitObservation = DigitObservation.fromDigit(Digit.One),
@@ -70,6 +114,31 @@ class ClockBreakingTest {
          ),
       ))
       assertNull(assessment)
+   }
+
+   @Test fun sampleTest2IO() {
+      val sis = StringBufferInputStream("""
+         2
+         ......XX.....XX...XX.
+         ...X....X...X..X.X..X
+         ...X....X.X.X..X.X..X
+         ......XX..........XX.
+         ...X.X....X.X..X.X..X
+         ...X.X......X..X.X..X
+         ......XX.....XX...XX.
+
+         ......XX.....XX......
+         ...X....X...X..X.....
+         ...X....X.X.X..X.....
+         ......XX.............
+         ...X.X....X.X..X.....
+         ...X.X......X..X.....
+         ......XX.....XX......
+      """.trimIndent())
+      val sos = StringOutputStream()
+
+      assessTimeDisplayIO(sis, sos)
+      assertEquals("impossible", sos.toString())
    }
 }
 
