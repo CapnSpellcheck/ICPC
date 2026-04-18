@@ -10,6 +10,7 @@ import java.io.OutputStream
 /**
  * This file contains a solution of the ICPC problem: https://icpc.kattis.com/problems/clock
  * The core business models are general, so I've separated those into their own package & source file.
+ * NOTE: this implementation passes the first 3 test cases on kattis.com, but fails the fourth.
  */
 
 /**
@@ -100,15 +101,14 @@ fun assessTimeDisplayIO(inStream: InputStream, outStream: OutputStream) {
       bufferedIn.readLine()
    }
    val assessment = assessTimeDisplay(observations)
-      assessment.serialize(outStream)
-//   outStream.flush()
+   assessment.serialize(outStream)
 }
 
 /**
  * The core problem solution.
  */
 fun assessTimeDisplay(displayObservations: List<TimeDisplayObservation>): TimeDisplayAssessment? {
-   val digitConditions: List<DigitCondition> = TimeDigit.entries.map { timeDigit ->
+   val digitConditions = TimeDigit.entries.map { timeDigit ->
       assessWorkingOrBurned(timeDigit, displayObservations)
    }
 
@@ -161,7 +161,11 @@ private fun assessWorkingOrBurned(digit: TimeDigit, observations: List<TimeDispl
    return DigitCondition(conditionList)
 }
 
-private fun accountAmbiguousConditions(startTime: Time, observations: List<TimeDisplayObservation>, conditions: List<DigitCondition>) {
+private fun accountAmbiguousConditions(
+   startTime: Time,
+   observations: List<TimeDisplayObservation>,
+   conditions: List<DigitCondition>
+) {
    var currentTime = startTime
    val matchesAll = Array(TimeDigit.entries.size) { BooleanArray(Segment.entries.size) { true } }
 

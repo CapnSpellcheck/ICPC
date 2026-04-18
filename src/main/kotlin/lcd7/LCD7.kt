@@ -26,7 +26,7 @@ enum class Segment(val onValue: Byte) {
    ;
 
    inline val isVertical: Boolean
-      get() = this == VERT_UPPER_LEFT || this == VERT_LOWER_LEFT || this == VERT_UPPER_RIGHT || this == VERT_LOWER_RIGHT
+      get() = this != HORIZ_UPPER && this != HORIZ_MIDDLE && this != HORIZ_LOWER
 }
 
 /**
@@ -269,7 +269,7 @@ class TimeDisplayObservation(
     * for each TimeDigit. The colon indicator is not analyzed.
     * The logic to determine DigitCondition from observations is problem dependent.
     * @param time The Time you want to determine to analyze.
-    * @param digitConditions the status of the 4 7-segment Digits of the display.
+    * @param digitConditions the status of the 4 7-segment Digits of the display in TimeDigit order.
     */
    fun matches(time: Time, digitConditions: List<DigitCondition>): Boolean {
       // In order for the observation to match a Time, all segments whose condition is indicated to
@@ -279,8 +279,10 @@ class TimeDisplayObservation(
          val digitCondition = digitConditions[timeDigit.ordinal]
          val ideal = timeDigit.atTime(time)
          for (segment in Segment.entries) {
-            if (digitCondition[segment] == SegmentCondition.WORKING && ideal.isOn(segment) != observationOf(timeDigit).isOn(segment))
-               return false
+            if (digitCondition[segment] == SegmentCondition.WORKING) {
+               if (ideal.isOn(segment) != observationOf(timeDigit).isOn(segment))
+                  return false
+            }
          }
       }
       return true
