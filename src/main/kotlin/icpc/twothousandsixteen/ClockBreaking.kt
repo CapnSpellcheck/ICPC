@@ -13,6 +13,13 @@ import java.io.OutputStream
  * NOTE: this implementation passes the first 3 test cases on kattis.com, but fails the fourth.
  */
 
+const val DEBUG = false
+fun printDebug(cs: CharSequence) {
+   if (DEBUG) {
+      println(cs)
+   }
+}
+
 /**
  * A TimeDisplayAssessment contains a DigitCondition for each of the TimeDigits, and a SegmentCondition
  * for each of the 2 dots of the colon.
@@ -114,11 +121,13 @@ fun assessTimeDisplay(displayObservations: List<TimeDisplayObservation>): TimeDi
 
    var possible = false
 
+   printDebug("Digit conditions: $digitConditions")
    for (startTimeOffset in 0..< 24*60) {
       val startTime = Time(startTimeOffset)
       if (displayObservations.allIndexed { index, observation ->
          observation.matches(Time(startTimeOffset + index), digitConditions)
       }) {
+         printDebug("Observations match time $startTime")
          possible = true
          accountAmbiguousConditions(startTime, displayObservations, digitConditions)
       }
@@ -166,6 +175,7 @@ private fun accountAmbiguousConditions(
    observations: List<TimeDisplayObservation>,
    conditions: List<DigitCondition>
 ) {
+   printDebug("Accounting ambiguous conditions")
    var currentTime = startTime
    val matchesAll = Array(TimeDigit.entries.size) { BooleanArray(Segment.entries.size) { true } }
 
@@ -188,8 +198,10 @@ private fun accountAmbiguousConditions(
    for (timeDigit in TimeDigit.entries) {
       val condition = conditions[timeDigit.ordinal]
       for (segment in Segment.entries) {
-         if (condition[segment].isBurned && matchesAll[timeDigit.ordinal][segment.ordinal])
+         if (condition[segment].isBurned && matchesAll[timeDigit.ordinal][segment.ordinal]) {
+            printDebug("Condition UNKNOWN on digit $timeDigit segment $segment")
             condition[segment] = UNKNOWN
+         }
       }
    }
 }

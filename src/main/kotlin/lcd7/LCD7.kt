@@ -49,27 +49,27 @@ enum class SegmentCondition {
  * A digit and how it is represented by a 7-segment LCD digit. It is modeled by storing a Byte
  * containing the `onValue`s of the segments that are on.
  */
-enum class Digit {
-   Zero(listOf(HORIZ_UPPER, HORIZ_LOWER, VERT_UPPER_RIGHT, VERT_UPPER_LEFT, VERT_LOWER_LEFT, VERT_LOWER_RIGHT)),
-   One(listOf(VERT_UPPER_RIGHT, VERT_LOWER_RIGHT)),
-   Two(listOf(HORIZ_UPPER, HORIZ_MIDDLE, HORIZ_LOWER, VERT_UPPER_RIGHT, VERT_LOWER_LEFT)),
-   Three(listOf(HORIZ_UPPER, HORIZ_MIDDLE, HORIZ_LOWER, VERT_UPPER_RIGHT, VERT_LOWER_RIGHT)),
-   Four(listOf(HORIZ_MIDDLE, VERT_UPPER_LEFT, VERT_UPPER_RIGHT, VERT_LOWER_RIGHT)),
-   Five(listOf(HORIZ_UPPER, HORIZ_MIDDLE, HORIZ_LOWER, VERT_UPPER_LEFT, VERT_LOWER_RIGHT)),
-   Six(listOf(HORIZ_UPPER, HORIZ_MIDDLE, HORIZ_LOWER, VERT_UPPER_LEFT, VERT_LOWER_RIGHT, VERT_LOWER_LEFT)),
-   Seven(listOf(HORIZ_UPPER, VERT_UPPER_RIGHT, VERT_LOWER_RIGHT)),
-   Eight(true, true, true, true, true, true, true),
-   Nine(true, true, true, true, false, true, true),
+enum class Digit(val debugChar: Char) {
+   Zero('0', listOf(HORIZ_UPPER, HORIZ_LOWER, VERT_UPPER_RIGHT, VERT_UPPER_LEFT, VERT_LOWER_LEFT, VERT_LOWER_RIGHT)),
+   One('1', listOf(VERT_UPPER_RIGHT, VERT_LOWER_RIGHT)),
+   Two('2', listOf(HORIZ_UPPER, HORIZ_MIDDLE, HORIZ_LOWER, VERT_UPPER_RIGHT, VERT_LOWER_LEFT)),
+   Three('3', listOf(HORIZ_UPPER, HORIZ_MIDDLE, HORIZ_LOWER, VERT_UPPER_RIGHT, VERT_LOWER_RIGHT)),
+   Four('4', listOf(HORIZ_MIDDLE, VERT_UPPER_LEFT, VERT_UPPER_RIGHT, VERT_LOWER_RIGHT)),
+   Five('5', listOf(HORIZ_UPPER, HORIZ_MIDDLE, HORIZ_LOWER, VERT_UPPER_LEFT, VERT_LOWER_RIGHT)),
+   Six('6', listOf(HORIZ_UPPER, HORIZ_MIDDLE, HORIZ_LOWER, VERT_UPPER_LEFT, VERT_LOWER_RIGHT, VERT_LOWER_LEFT)),
+   Seven('7', listOf(HORIZ_UPPER, VERT_UPPER_RIGHT, VERT_LOWER_RIGHT)),
+   Eight('8', true, true, true, true, true, true, true),
+   Nine('9', true, true, true, true, false, true, true),
    // Only the HOUR_TENS digit can be Null
-   Null(emptyList()),
+   Null(' ', emptyList()),
    ;
 
-   val onSegmentFlags: Byte
+   var onSegmentFlags: Byte = 0; private set // TODO: fix the constructors
 
    inline fun isOn(segment: Segment): Boolean =
       this.onSegmentFlags.and(segment.onValue) != ZERO
 
-   constructor(segmentList: List<Segment>) {
+   constructor(debugChar: Char, segmentList: List<Segment>) : this(debugChar) {
       var flags: Byte = 0
       for (segment in segmentList) {
          flags = flags.or(segment.onValue)
@@ -77,7 +77,7 @@ enum class Digit {
       this.onSegmentFlags = flags
    }
 
-   constructor(top: Boolean, upperLeft: Boolean, upperRight: Boolean, middle: Boolean, lowerLeft: Boolean, lowerRight: Boolean, bottom: Boolean) {
+   constructor(debugChar: Char, top: Boolean, upperLeft: Boolean, upperRight: Boolean, middle: Boolean, lowerLeft: Boolean, lowerRight: Boolean, bottom: Boolean) : this(debugChar) {
       var flags: Byte = 0
       if (top)
          flags = flags.or(HORIZ_UPPER.onValue)
@@ -189,7 +189,7 @@ class Time(val minutesOffsetFromMidnight: Int) {
    fun nextMinute(): Time = Time(this.minutesOffsetFromMidnight + 1)
 
    override fun toString(): String {
-      return "Time(minutesOffsetFromMidnight=$minutesOffsetFromMidnight, hourDigitOne=$hourDigitOne, hourDigitTwo=$hourDigitTwo, minuteDigitOne=$minuteDigitOne, minuteDigitTwo=$minuteDigitTwo)"
+      return "Time(minutesOffsetFromMidnight=$minutesOffsetFromMidnight) ${hourDigitOne.debugChar}${hourDigitTwo.debugChar}:${minuteDigitOne.debugChar}${minuteDigitTwo.debugChar}"
    }
 }
 
