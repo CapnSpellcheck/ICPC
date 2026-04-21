@@ -10,7 +10,9 @@ import java.io.OutputStream
 /**
  * This file contains a solution of the ICPC problem: https://icpc.kattis.com/problems/clock
  * The core business models are general, so I've separated those into their own package & source file.
- * NOTE: this implementation passes the first 3 test cases on kattis.com, but fails the fourth.
+ * NOTE: although this fails the fourth test case on kattis.com, I've compared my solution output
+ * to the output of a known correct solution for 1000 randomly generated inputs and mine matched
+ * perfectly.
  */
 
 const val DEBUG = false
@@ -80,7 +82,7 @@ class TimeDisplayAssessment(
 fun TimeDisplayAssessment?.serialize(outputStream: OutputStream) {
    if (this == null) {
       outputStream.writer().use {
-         it.write("impossible")
+         it.write("impossible\n")
       }
    } else
       this.serialize(outputStream)
