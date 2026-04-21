@@ -1,0 +1,1 @@
+My Kattis username is "shimmering-ideas" (https://icpc.kattis.com/users/shimmering-ideas)
