@@ -41,6 +41,24 @@ class DrSprinkler {
       }
    }
 
+   /**
+    * The main solution to the problem
+    * I solved it by working in three phases:
+    * 1) Input processing: while reading the text for the first pass, I extract words and build 4 tables
+    *   * wordPredecessors: for each word that comes after some word in a sentence, I build a set of
+    *   the words that precede it
+    *   * wordSuccessors: for each word that comes before some word in a sentence, I build a set of
+    *   the words that follow it
+    *   * commaPredecessors: for each word that comes before a comma, I insert it into this set.
+    *   * commaSuccessors: for each word that comes after a comma, I insert it into this set.
+    * 2) Complete the commaPredecessors, commaSuccessors: the rules of Dr Sprinkler are recursive,
+    *   and at this point, these 2 sets have initial entries only, as found in the literal text.
+    *   Therefore I use DFS with 2 mutually recursive functions to 'sniff out' all words that should
+    *   be in the 2 sets.
+    * 3) Generating the output: By scanning the text again, I place commas using the set of
+    *   predecessors and successors, but only after confirming the input did not have a period
+    *   between each pair of words. I copy periods where present.
+    */
    fun apply(text: String, outputStream: OutputStream) {
       // Scan the input and build the word pred/succ tables. The comma pred/succ tables will be
       // initialized with the initial state from text.
