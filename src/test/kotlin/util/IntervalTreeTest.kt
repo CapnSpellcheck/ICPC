@@ -53,9 +53,9 @@ class IntervalTreeTest {
       }
       println("--- RANDOM INTERVALS: $intervals")
 
-      val tree = IntervalTree<Any?>()
+      val tree = IntervalTree<Unit>()
       intervals.forEach {
-         tree.insert(it, null)
+         tree.insert(it, Unit)
       }
       assertTrue(tree.hasValidColoring())
       assertTrue(tree.hasConsistentMaxEnds())
@@ -77,8 +77,8 @@ class IntervalTreeTest {
          }
          println("--- RANDOM INTERVALS: $intervals")
 
-         val tree = IntervalTree<Any?>()
-         intervals.forEach { tree.insert(it, null) }
+         val tree = IntervalTree<Unit>()
+         intervals.forEach { tree.insert(it, Unit) }
          assertTrue(tree.hasValidColoring())
          assertTrue(tree.hasConsistentMaxEnds())
 
@@ -99,7 +99,7 @@ class IntervalTreeTest {
       println("--- RANDOM INTERVALS: $intervals")
 
       val tree = IntervalTree<Unit?>()
-      intervals.forEach { tree.insert(it, null) }
+      intervals.forEach { tree.insert(it, Unit) }
       assertTrue(tree.hasValidColoring())
       assertTrue(tree.hasConsistentMaxEnds())
 
@@ -120,8 +120,8 @@ class IntervalTreeTest {
       val deletedIntervals = mutableListOf<IntRange>()
       println("--- RANDOM INTERVALS: $intervals")
 
-      val tree = IntervalTree<Any?>()
-      intervals.forEach { tree.insert(it, null) }
+      val tree = IntervalTree<Unit>()
+      intervals.forEach { tree.insert(it, Unit) }
       // delete some randomly
       repeat(10) {
          val index = Random.nextInt(intervals.size)
@@ -146,7 +146,7 @@ class IntervalTreeTest {
             intervals.add(Random.nextInt(0, 900).let { r -> IntRange(r, r + Random.nextInt(100)) })
             if (deletedIntervals.contains(intervals.last()))
                deletedIntervals.remove(intervals.last())
-            tree.insert(intervals.last(), null)
+            tree.insert(intervals.last(), Unit)
          } else {
             val index = Random.nextInt(intervals.size)
             tree.delete(intervals[index])
@@ -173,8 +173,8 @@ class IntervalTreeTest {
       }.toMutableList()
       println("--- RANDOM INTERVALS: $intervals")
 
-      val tree = IntervalTree<Any?>()
-      intervals.forEach { tree.insert(it, null) }
+      val tree = IntervalTree<Unit>()
+      intervals.forEach { tree.insert(it, Unit) }
       // delete some randomly
       repeat(10) {
          val index = Random.nextInt(intervals.size)
@@ -195,7 +195,7 @@ class IntervalTreeTest {
          // randomly delete or insert
          if (Random.nextBoolean() || intervals.isEmpty()) {
             intervals.add(Random.nextInt(0, 900).let { r -> IntRange(r, r + Random.nextInt(100)) })
-            tree.insert(intervals.last(), null)
+            tree.insert(intervals.last(), Unit)
          } else {
             val index = Random.nextInt(intervals.size)
             tree.delete(intervals[index])
@@ -213,17 +213,77 @@ class IntervalTreeTest {
       }
    }
 
-   @Test fun asdgsadg() {
-      val intervals = listOf(62..151, 143..176, 17..45, 415..478, 665..751, 564..663, 203..288, 787..864, 324..358, 180..224, 82..160, 289..358, 185..229, 883..942, 786..842, 180..210, 163..224, 162..254, 829..872, 327..409, 281..303, 609..675, 303..305, 77..119, 80..166, 168..198, 130..229, 154..167, 156..247, 472..493, 849..947, 184..262, 138..196, 261..348, 735..809, 79..155, 803..833, 815..885, 418..515, 207..283, 220..318, 602..628, 749..805, 279..370, 292..332, 148..162, 384..403, 328..427, 35..129, 361..409, 746..807, 409..466, 5..100, 49..103, 71..117, 491..506, 690..747, 624..668, 813..896, 783..875, 236..292, 851..871, 241..319, 609..651, 299..344, 492..563, 192..200, 733..733, 211..292, 347..390, 622..651, 885..914, 897..986, 93..101, 35..91, 634..711, 777..783, 564..654, 843..939, 228..236, 10..47, 45..130, 888..973, 811..883, 670..678, 352..368, 97..179, 865..915, 1..82, 719..769, 723..808, 618..693, 856..912, 544..639, 109..202, 510..573, 801..882, 748..792, 891..946, 372..462)
-      val tree = IntervalTree<Any?>()
-      intervals.forEach { tree.insert(it, null) }
-      tree.delete(130..229)
-      tree.delete(261..348)
-      tree.delete(733..733)
-      tree.delete(786..842)
-      tree.delete(415..478)
+   @Test fun testInsertAndDeleteWithSecondaryKey() {
+      val tree = IntervalTree<Unit>()
+      assertTrue(tree.insert(0 .. 1, Unit, 1))
+      assertTrue(tree.insert(0 .. 2, Unit, 2))
+      assertTrue(tree.insert(1 .. 1, Unit, 3))
+      assertTrue(tree.insert(0 .. 1, Unit, 4))
+      assertTrue(tree.insert(1 .. 1, Unit, 5))
+      assertTrue(tree.insert(1 .. 2, Unit, 6))
+
+      assertTrue(tree.contains(0 .. 1, 1))
+      assertTrue(tree.contains(0 .. 2, 2))
+      assertTrue(tree.contains(1 .. 1, 3))
+      assertTrue(tree.contains(0 .. 1, 4))
+      assertTrue(tree.contains(1 .. 1, 5))
+      assertTrue(tree.contains(1 .. 2, 6))
+      assertFalse(tree.contains(0 .. 1, 2))
+      assertFalse(tree.contains(0 .. 2, 1))
+      assertFalse(tree.contains(1 .. 1, 4))
+      assertFalse(tree.contains(0 .. 1, 6))
+      assertFalse(tree.contains(1 .. 2, 3))
+
+      tree.delete(1 .. 1, 5)
+      assertTrue(tree.contains(1 .. 1, 3))
+      assertFalse(tree.contains(1 .. 1, 5))
+      assertTrue(tree.contains(0 .. 1, 4))
+      assertTrue(tree.contains(1 .. 2, 6))
+
+      tree.delete(0 .. 1, 2) // not in tree
+      assertTrue(tree.contains(0 .. 1, 1))
+      assertTrue(tree.contains(0 .. 1, 4))
+   }
+
+   @Test fun testOverlappersWithSecondaryKeyAfterRandomInserts() {
+      val keys = (0 ..< 10).map { (0 ..< 10).map { mutableListOf<Int>() } }
+      repeat(500) {
+         val interval = Random.nextInt(0, 10).let { r -> IntRange(r, Random.nextInt(r, 10)) }
+         keys[interval.first][interval.last] += it
+      }
+
+      val tree = IntervalTree<Unit>()
+      keys.forEachIndexed { i, ranges ->
+         ranges.forEachIndexed { j, keys ->
+            for (key in keys) {
+               tree.insert(i..j, Unit, key)
+               println("inserting $i, $j, $key")
+            }
+         }
+      }
+
       assertTrue(tree.hasValidColoring())
       assertTrue(tree.hasConsistentMaxEnds())
+
+      for (start in 0 ..< 10) {
+         for (end in start ..< 10) {
+            val testRange = start .. end
+            println("***** TEST RANGE $testRange")
+
+            val overlappers = tree.overlappers(testRange).asSequence().groupBy { it.interval }.mapValues { it.value.map { it.secondaryKey }.toSet() }
+            // this is sloppy way to do this but my brain is fried
+            val expectedKeyset = hashMapOf<IntRange, Set<Int>>()
+            for (x in 0 ..< 10) {
+               for (y in x ..< 10) {
+                  val omgRange = IntRange(x, y)
+                  if (omgRange.intersects(testRange))
+                     expectedKeyset[omgRange] = keys[x][y].toSet()
+               }
+            }
+            assertEquals(expectedKeyset, overlappers, "Expected keys for interval '$testRange'")
+
+         }
+      }
    }
-   
+
 }

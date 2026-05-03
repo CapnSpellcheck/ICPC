@@ -3,6 +3,12 @@ package util
 import java.util.*
 import kotlin.math.max
 
+/**
+ * NOTE: I have modified a classic "interval tree" to support a secondary key. You can insert identical intervals
+ * if they have distinct secondary keys. For simplicity, I am just using integer for secondary key.
+ * Also, I store ancillary data in the node, because if I do that I don't have to store it elsewhere.
+ */
+
 class IntervalTree<Ancillary> {
    private abstract class NodeOrProxy<T> {
       abstract val parent: Node<T>?
@@ -19,14 +25,18 @@ class IntervalTree<Ancillary> {
          set(_) {}
    }
 
-   private class Node<Ancillary>(interval: IntRange, ancillary: Ancillary) : NodeOrProxy<Ancillary>() {
-      var ancillary = ancillary; private set
+   private class Node<Ancillary>(interval: IntRange, ancillary: Ancillary, secondaryKey: Int) : NodeOrProxy<Ancillary>() {
+      // interval and primary data
       var interval = interval; private set
+      var secondaryKey = secondaryKey; private set
+      var ancillary = ancillary; private set
+      var maxEnd = interval.last
+
+      // node references and algorithm data
       override var parent: Node<Ancillary>? = null
       var leftChild: Node<Ancillary>? = null
       var rightChild: Node<Ancillary>? = null
       override var isBlack = false
-      var maxEnd = interval.last
 
       inline val start
          get() = interval.first
@@ -43,18 +53,23 @@ class IntervalTree<Ancillary> {
        * @return the Node with the given Interval, if it exists; otherwise,
        * the sentinel Node
        */
-      fun search(int: IntRange): Node<Ancillary>? {
-         tailrec fun <T> search(t: IntRange, cur: Node<T>?): Node<T>? {
+      fun search(int: IntRange, secondaryKey: Int = 0): Node<Ancillary>? {
+         tailrec fun <T> search(cur: Node<T>?): Node<T>? {
             if (cur == null)
                return null
-            val comp = cur.interval.compareTo(t)
+            var comp = cur.interval.compareTo(int)
             if (comp > 0)
-               return search(t, cur.leftChild)
+               return search(cur.leftChild)
             if (comp < 0)
-               return search(t, cur.rightChild)
-            return cur
+               return search(cur.rightChild)
+            comp = cur.secondaryKey.compareTo(secondaryKey)
+            if (comp == 0)
+               return cur
+            if (comp > 0)
+               return search(cur.leftChild)
+            return search(cur.rightChild)
          }
-         return search(int, this)
+         return search(this)
       }
 
       /**
@@ -67,24 +82,6 @@ class IntervalTree<Ancillary> {
             cur.leftChild?.let { cur = it } ?: break
          }
          return cur
-      }
-
-      /**
-       * The successor of this Node.
-       * @return the Node following this Node, if it exists; otherwise the
-       * sentinel Node
-       */
-      fun successor(): Node<Ancillary>? {
-         rightChild?.let { return it.minimumNode() }
-
-         tailrec fun <T> successor(cur: Node<T>?): Node<T>? {
-            if (cur == null)
-               return null
-            if (cur == cur.parent?.rightChild)
-               return successor(cur.parent)
-            return cur.parent
-         }
-         return successor(this)
       }
 
       ///////////////////////////////////////
@@ -322,6 +319,7 @@ class IntervalTree<Ancillary> {
       fun replace(other: Node<Ancillary>) {
          this.maxEnd = other.maxEnd
          this.interval = other.interval
+         this.secondaryKey = other.secondaryKey
          this.ancillary = other.ancillary
          maxEndFixup()
       }
@@ -338,7 +336,7 @@ class IntervalTree<Ancillary> {
 
    }
 
-   class OverlapResult<Ancillary>(val interval: IntRange, val ancillary: Ancillary)
+   class OverlapResult<Ancillary>(val interval: IntRange, val ancillary: Ancillary, val secondaryKey: Int)
 
    private var root: Node<Ancillary>? = null
    private val ASSIGN_ROOT: (Node<Ancillary>?) -> Unit = { newRoot -> this.root = newRoot }
@@ -352,7 +350,7 @@ class IntervalTree<Ancillary> {
     * This method returns the nil Node if the Interval t cannot be found.
     * @param int - the Interval to search for.
     */
-   private inline fun search(int: IntRange): Node<Ancillary>? = root?.search(int)
+   private inline fun search(int: IntRange, secondaryKey: Int = 0): Node<Ancillary>? = root?.search(int, secondaryKey)
 
    /**
     * An Iterator over the Intervals in this IntervalTree that overlap the
@@ -373,13 +371,13 @@ class IntervalTree<Ancillary> {
    /**
     * Get the ancillary value of a given interval, or null if no such interval is found.
     */
-   fun getAncillary(int: IntRange): Ancillary? = search(int)?.ancillary
+   fun getAncillary(int: IntRange, secondaryKey: Int = 0): Ancillary? = search(int, secondaryKey)?.ancillary
 
    /**
     * Whether or not this IntervalTree contains the given Interval.
     * @param t - the Interval to search for
     */
-   fun contains(int: IntRange): Boolean = search(int) != null
+   fun contains(int: IntRange, secondaryKey: Int = 0): Boolean = search(int, secondaryKey) != null
 
    ///////////////////////////////
    // Tree -- Mutation methods //
@@ -395,20 +393,29 @@ class IntervalTree<Ancillary> {
     * @return if the value did not already exist, i.e., true if the tree was
     * changed, false if it was not
     */
-   fun insert(int: IntRange, ancillaryData: Ancillary): Boolean {
-      val new = Node(int, ancillaryData)
+   fun insert(int: IntRange, ancillaryData: Ancillary, secondaryKey: Int = 0): Boolean {
+      val new = Node(int, ancillaryData, secondaryKey)
 
       var y: Node<Ancillary>? = null
       var x: Node<Ancillary>? = root
+      var isLeft = false
 
       while (x != null) {                         // Traverse the tree down to a leaf.
          y = x
          x.maxEnd = max(x.maxEnd, new.maxEnd) // Update maxEnd on the way down.
-         val cmp: Int = int.compareTo(x.interval)
-         if (cmp == 0)
-         // Value already in tree. Do nothing.
+         val intCompare: Int = int.compareTo(x.interval)
+         val secondaryKeyCompare = secondaryKey.compareTo(x.secondaryKey)
+         x = if (intCompare < 0 || (intCompare == 0 && secondaryKeyCompare < 0)) {
+            isLeft = true
+            x.leftChild
+         }
+         else if (intCompare > 0 || secondaryKeyCompare > 0) {
+            isLeft = false
+            x.rightChild
+         }
+         else
+         // Interval with same secondary key already in tree. Do nothing.
             return false
-         x = if (cmp == -1) x.leftChild else x.rightChild
       }
 
       new.parent = y
@@ -418,10 +425,9 @@ class IntervalTree<Ancillary> {
          new.isBlack = true
       } else {                      // Set the parent of n.
          val cmp: Int = int.compareTo(y.interval)
-         if (cmp == -1) {
+         if (isLeft) {
             y.leftChild = new
          } else {
-            assert(cmp == 1)
             y.rightChild = new
          }
          insertFixup(new)
@@ -489,8 +495,8 @@ class IntervalTree<Ancillary> {
     * @param int - the Interval to delete from the tree
     * @return whether or not an Interval was removed from this IntervalTree
     */
-   fun delete(int: IntRange) {
-      val node = search(int) ?: return
+   fun delete(int: IntRange, secondaryKey: Int = 0) {
+      val node = search(int, secondaryKey) ?: return
       val nodeOrSuccessor =
          if (node.leftChild == null || node.rightChild == null)
             node
@@ -663,7 +669,7 @@ class IntervalTree<Ancillary> {
 
       override fun next(): OverlapResult<Ancillary> {
          val node = nodeIter.next()
-         return OverlapResult(node.interval, node.ancillary)
+         return OverlapResult(node.interval, node.ancillary, node.secondaryKey)
       }
    }
 
