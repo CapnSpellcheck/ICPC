@@ -38,12 +38,11 @@ class IntervalTreeTest {
       val tree = IntervalTree<String>()
       for (i in 0 .. intervals.lastIndex) {
          tree.insert(intervals[i], values[i])
-         println("Tree size: ${tree.debugSize()}")
       }
 
       // check values
       for (i in 0 .. intervals.lastIndex) {
-         assertEquals(values[i], tree.getAncillary(intervals[i]))
+         assertEquals(values[i], tree.get(intervals[i]))
       }
    }
 
@@ -209,79 +208,6 @@ class IntervalTreeTest {
                val overlappers = tree.overlappers(testRange).asSequence().map { it.interval }.toSet()
                assertEquals(expected, overlappers, "overlappers for '$testRange'")
             }
-         }
-      }
-   }
-
-   @Test fun testInsertAndDeleteWithSecondaryKey() {
-      val tree = IntervalTree<Unit>()
-      assertTrue(tree.insert(0 .. 1, Unit, 1))
-      assertTrue(tree.insert(0 .. 2, Unit, 2))
-      assertTrue(tree.insert(1 .. 1, Unit, 3))
-      assertTrue(tree.insert(0 .. 1, Unit, 4))
-      assertTrue(tree.insert(1 .. 1, Unit, 5))
-      assertTrue(tree.insert(1 .. 2, Unit, 6))
-
-      assertTrue(tree.contains(0 .. 1, 1))
-      assertTrue(tree.contains(0 .. 2, 2))
-      assertTrue(tree.contains(1 .. 1, 3))
-      assertTrue(tree.contains(0 .. 1, 4))
-      assertTrue(tree.contains(1 .. 1, 5))
-      assertTrue(tree.contains(1 .. 2, 6))
-      assertFalse(tree.contains(0 .. 1, 2))
-      assertFalse(tree.contains(0 .. 2, 1))
-      assertFalse(tree.contains(1 .. 1, 4))
-      assertFalse(tree.contains(0 .. 1, 6))
-      assertFalse(tree.contains(1 .. 2, 3))
-
-      tree.delete(1 .. 1, 5)
-      assertTrue(tree.contains(1 .. 1, 3))
-      assertFalse(tree.contains(1 .. 1, 5))
-      assertTrue(tree.contains(0 .. 1, 4))
-      assertTrue(tree.contains(1 .. 2, 6))
-
-      tree.delete(0 .. 1, 2) // not in tree
-      assertTrue(tree.contains(0 .. 1, 1))
-      assertTrue(tree.contains(0 .. 1, 4))
-   }
-
-   @Test fun testOverlappersWithSecondaryKeyAfterRandomInserts() {
-      val keys = (0 ..< 10).map { (0 ..< 10).map { mutableListOf<Int>() } }
-      repeat(500) {
-         val interval = Random.nextInt(0, 10).let { r -> IntRange(r, Random.nextInt(r, 10)) }
-         keys[interval.first][interval.last] += it
-      }
-
-      val tree = IntervalTree<Unit>()
-      keys.forEachIndexed { i, ranges ->
-         ranges.forEachIndexed { j, keys ->
-            for (key in keys) {
-               tree.insert(i..j, Unit, key)
-               println("inserting $i, $j, $key")
-            }
-         }
-      }
-
-      assertTrue(tree.hasValidColoring())
-      assertTrue(tree.hasConsistentMaxEnds())
-
-      for (start in 0 ..< 10) {
-         for (end in start ..< 10) {
-            val testRange = start .. end
-            println("***** TEST RANGE $testRange")
-
-            val overlappers = tree.overlappers(testRange).asSequence().groupBy { it.interval }.mapValues { it.value.map { it.secondaryKey }.toSet() }
-            // this is sloppy way to do this but my brain is fried
-            val expectedKeyset = hashMapOf<IntRange, Set<Int>>()
-            for (x in 0 ..< 10) {
-               for (y in x ..< 10) {
-                  val omgRange = IntRange(x, y)
-                  if (omgRange.intersects(testRange))
-                     expectedKeyset[omgRange] = keys[x][y].toSet()
-               }
-            }
-            assertEquals(expectedKeyset, overlappers, "Expected keys for interval '$testRange'")
-
          }
       }
    }
