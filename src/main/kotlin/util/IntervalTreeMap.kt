@@ -3,7 +3,7 @@ package util
 import java.util.*
 import kotlin.math.max
 
-class IntervalTree<V> {
+class IntervalTreeMap<V> {
    private abstract class NodeOrProxy<T> {
       abstract val parent: Node<T>?
       abstract fun isLeftChild(): Boolean

@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-class IntervalTreeTest {
+class IntervalTreeMapTest {
 
    @Test fun testAncillaryValues() {
       val intervals = listOf(
@@ -35,7 +35,7 @@ class IntervalTreeTest {
          "deserunt mollit anim",
       )
 
-      val tree = IntervalTree<String>()
+      val tree = IntervalTreeMap<String>()
       for (i in 0 .. intervals.lastIndex) {
          tree.insert(intervals[i], values[i])
       }
@@ -52,7 +52,7 @@ class IntervalTreeTest {
       }
       println("--- RANDOM INTERVALS: $intervals")
 
-      val tree = IntervalTree<Unit>()
+      val tree = IntervalTreeMap<Unit>()
       intervals.forEach {
          tree.insert(it, Unit)
       }
@@ -76,7 +76,7 @@ class IntervalTreeTest {
          }
          println("--- RANDOM INTERVALS: $intervals")
 
-         val tree = IntervalTree<Unit>()
+         val tree = IntervalTreeMap<Unit>()
          intervals.forEach { tree.insert(it, Unit) }
          assertTrue(tree.hasValidColoring())
          assertTrue(tree.hasConsistentMaxEnds())
@@ -97,7 +97,7 @@ class IntervalTreeTest {
       }
       println("--- RANDOM INTERVALS: $intervals")
 
-      val tree = IntervalTree<Unit?>()
+      val tree = IntervalTreeMap<Unit?>()
       intervals.forEach { tree.insert(it, Unit) }
       assertTrue(tree.hasValidColoring())
       assertTrue(tree.hasConsistentMaxEnds())
@@ -119,7 +119,7 @@ class IntervalTreeTest {
       val deletedIntervals = mutableListOf<IntRange>()
       println("--- RANDOM INTERVALS: $intervals")
 
-      val tree = IntervalTree<Unit>()
+      val tree = IntervalTreeMap<Unit>()
       intervals.forEach { tree.insert(it, Unit) }
       // delete some randomly
       repeat(10) {
@@ -172,7 +172,7 @@ class IntervalTreeTest {
       }.toMutableList()
       println("--- RANDOM INTERVALS: $intervals")
 
-      val tree = IntervalTree<Unit>()
+      val tree = IntervalTreeMap<Unit>()
       intervals.forEach { tree.insert(it, Unit) }
       // delete some randomly
       repeat(10) {

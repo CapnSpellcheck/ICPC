@@ -4,8 +4,14 @@ import java.awt.Point
 import kotlin.random.Random
 
 class TwoDTreeMap<V : Comparable<V>> {
-   private class Node<V>(val x: Int, val y: Int, value: V) {
-      var value = value; private set
+   private interface Entry<V> {
+      val x: Int
+      val y: Int
+      val value: V
+   }
+
+   private class Node<V>(override val x: Int, override val y: Int, value: V): Entry<V> {
+      override var value = value; private set
       private var deleted = false
       private var left: Node<V>? = null
       private var right: Node<V>? = null
@@ -111,7 +117,7 @@ class TwoDTreeMap<V : Comparable<V>> {
          return null
       }
 
-      fun delete(parent: Node<V>? = null, x: Int, y: Int): Int {
+      fun delete(parent: Node<V>?, x: Int, y: Int): Int {
          if (this.x == x && this.y == y) {
             if (deleted)
                return DeleteCodes.NOT_FOUND
@@ -140,9 +146,21 @@ class TwoDTreeMap<V : Comparable<V>> {
          }
       }
 
+      fun addAllTo(list: MutableList<Entry<V>>) {
+         if (!deleted)
+            list.add((this))
+         left?.addAllTo(list)
+         right?.addAllTo(list)
+      }
+
    }
 
-   private class Entry<V>(val p: Point, val value: V)
+   private class BasicEntry<V>(val p: Point, override val value: V): Entry<V> {
+      override val x: Int
+         get() = p.x
+      override val y: Int
+         get() = p.y
+   }
 
    private var setStore: HashMap<Point, V>? = HashMap(CREATE_TREE_THRESHOLD)
    private var root: Node<V>? = null
@@ -191,18 +209,24 @@ class TwoDTreeMap<V : Comparable<V>> {
          rebuild()
       }
 
-      if (size == 1) {
+      if (size == 1 && x == root!!.x && y == root!!.y) {
          root = null
          size = 0
          deletedCount = 0
          return true
       }
       val code = root!!.delete(null, x, y)
-      if (code == DeleteCodes.NOT_FOUND)
-         return false
-      if (code == DeleteCodes.DELETED_NONLEAF)
-         deletedCount += 1
-      return true
+      return when (code) {
+         DeleteCodes.DELETED_NONLEAF ->  {
+            deletedCount += 1
+            true
+         }
+         DeleteCodes.DELETED_LEAF -> {
+            size -= 1
+            true
+         }
+         else -> false
+      }
    }
 
    fun findAll(xRange: IntRange, yRange: IntRange): List<V> {
@@ -230,22 +254,32 @@ class TwoDTreeMap<V : Comparable<V>> {
    }
 
    private fun buildTree() {
-      root = buildTree(setStore!!.entries.map { Entry(it.key, it.value) } as ArrayList, true)
+      val entries = ArrayList<Entry<V>>(setStore!!.size)
+      setStore!!.entries.mapTo(entries) { BasicEntry(it.key, it.value) }
+      root = buildTree(entries)
       setStore = null
    }
 
-   private fun buildTree(entries: MutableList<Entry<V>>, isByX: Boolean): Node<V>? {
+   private fun buildTree(entries: MutableList<Entry<V>>, isByX: Boolean = true): Node<V>? {
       if (entries.isEmpty()) return null
-      entries.sortBy(if (isByX) { node -> node.p.x } else { node -> node.p.y } )
-      val medianIndex = entries.size / 2
+      entries.sortBy(if (isByX) { node -> node.x } else { node -> node.y } )
+      var medianIndex = entries.size / 2
+      // !! items equal to the median must be on the right
+      while (medianIndex > 0 && if (isByX) entries[medianIndex - 1].x == entries[medianIndex].x else entries[medianIndex - 1].y == entries[medianIndex].y) {
+         medianIndex -= 1
+      }
       val medianEntry = entries[medianIndex]
       val leftNode = buildTree(entries.subList(0, medianIndex), !isByX)
       val rightNode = buildTree(entries.subList(medianIndex + 1, entries.size), !isByX)
-      return Node(medianEntry.p.x, medianEntry.p.y, medianEntry.value, leftNode, rightNode, isByX)
+      return Node(medianEntry.x, medianEntry.y, medianEntry.value, leftNode, rightNode, isByX)
    }
 
    private fun rebuild() {
-
+      val entries = ArrayList<Entry<V>>(size - deletedCount)
+      root!!.addAllTo(entries)
+      root = buildTree(entries)
+      size = entries.size
+      deletedCount = 0
    }
 
    companion object {
