@@ -149,6 +149,8 @@ class TwoDTreeMap<V : Comparable<V>> {
    private var size = 0
    private var deletedCount = 0
 
+   fun size(): Int = size - deletedCount
+
    fun insert(x: Int, y: Int, value: V): Boolean {
       setStore?.let { set ->
          if (size >= CREATE_TREE_THRESHOLD) {
@@ -179,7 +181,10 @@ class TwoDTreeMap<V : Comparable<V>> {
 
    fun delete(x: Int, y: Int): Boolean {
       setStore?.let { set ->
-         return set.remove(Point(x, y)) != null
+         return if (set.remove(Point(x, y)) != null) {
+            size -= 1
+            true
+         } else false
       }
 
       if (deletedCount >= DELETE_THRESHOLD && deletedCount >= size / 2) {
