@@ -116,7 +116,7 @@ class TwoDTreeMapTest {
       }
    }
 
-   @Test fun ass() {
+   @Test fun testDeleteError() {
       val tree = TwoDTreeMap<String>()
       tree.insert(-4, -32, "bshhoccexupradpajcbjqeqvgmqmouaegjwgrpvamvcocekzrb")
       tree.insert(-4, 60, "xkvnxvfhstekqnkalmqwpzlvsedkawyilizqjokkdxizbkardw")

@@ -1,10 +1,11 @@
 package icpc.twothousandfifteen
 
-import util.IntervalTree
+import util.IntervalTreeMap
 import util.TwoDTreeMap
 import java.awt.Rectangle
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.BitSet
 import kotlin.math.abs
 import kotlin.math.min
 import kotlin.random.Random
@@ -122,34 +123,31 @@ class WindowManager(val screenWidth: Int, val screenHeight: Int) {
    // Windows are referenced by their ID, which is set to equal their index in `windowList`.
    private val upperLeft2DTree = TwoDTreeMap<Int>()
    private val lowerRight2DTree = TwoDTreeMap<Int>()
+   private val screenBounds = Rectangle(0, 0, screenWidth - 1, screenHeight - 1)
    private val dimensionProjectorXPositive = DimensionProjector.create(
       Dimension.X,
-      screenWidth - 1,
-      screenHeight - 1,
+      screenBounds,
       true,
       upperLeft2DTree,
       lowerRight2DTree,
    )
    private val dimensionProjectorXNegative = DimensionProjector.create(
       Dimension.X,
-      0,
-      screenHeight - 1,
+      screenBounds,
       false,
       upperLeft2DTree,
       lowerRight2DTree,
    )
    private val dimensionProjectorYPositive = DimensionProjector.create(
       Dimension.Y,
-      screenHeight - 1,
-      screenWidth - 1,
+      screenBounds,
       true,
       upperLeft2DTree,
       lowerRight2DTree,
    )
    private val dimensionProjectorYNegative = DimensionProjector.create(
       Dimension.Y,
-      0,
-      screenWidth - 1,
+      screenBounds,
       false,
       upperLeft2DTree,
       lowerRight2DTree,
@@ -175,6 +173,7 @@ class WindowManager(val screenWidth: Int, val screenHeight: Int) {
          return false
       }
       // full check for windows whose intersection with target fully spans one axis
+      // TODO:  skip conditions
       if ((originX < screenWidth / 2 && originY < screenHeight / 2) || ((originX < screenWidth / 2 || originY < screenHeight / 2) && Random.nextBoolean())) {
          val candidates = ArrayList<Int>()
          upperLeft2DTree.findAllTo(0 ..< originX, 0 .. yRange.last, candidates)
@@ -226,13 +225,13 @@ class WindowManager(val screenWidth: Int, val screenHeight: Int) {
       // check rectangles of new area
       val candidates = ArrayList<Int>()
       if (newWidth > window.width) {
-         upperLeft2DTree.findAllTo(window.xRange.last + 1 ..< window.originX + newWidth, 0 .. window.yRange.last, candidates)
+         upperLeft2DTree.findAllTo(window.xRange.last + 1 ..< window.originX + newWidth, 0 ..< window.originY + newHeight, candidates)
          if (candidates.any { windowList[it].yRange.last >= window.originY })
             return ResizeResult.DoesNotFit
       }
       if (newHeight > window.height) {
          candidates.clear()
-         upperLeft2DTree.findAllTo(0 ..< window.originX + newWidth, window.yRange.last ..< window.originY + newHeight, candidates)
+         upperLeft2DTree.findAllTo(0 ..< window.originX + newWidth, window.yRange.last + 1 ..< window.originY + newHeight, candidates)
          if (candidates.any { windowList[it].xRange.last >= window.originX })
             return ResizeResult.DoesNotFit
       }
@@ -286,6 +285,8 @@ class WindowManager(val screenWidth: Int, val screenHeight: Int) {
       var minTrailingSpaceToBound = projector.trailingSpaceToBound(window)
       val collisionWindows = projector.findCollisions(window, remainder, windowList)
       var movedAmount = 0
+      val movedWindowIDs = BitSet()
+      movedWindowIDs.set(window.ID)
 
       // QUICK PATH: if there are no windows to collide with, skip the push logic
       if (collisionWindows.isNotEmpty()) {
@@ -294,9 +295,9 @@ class WindowManager(val screenWidth: Int, val screenHeight: Int) {
          // This interval tree is maintained so that there are no overlapping intervals. The value stored is
          // the window's "reference coordinate" of its trailing edge on the main axis - i.e. its trailing edge minus the amount
          // the original window has moved so far
-         val pushedWindowCrossAxisRanges = IntervalTree<Int>()
+         val pushedWindowCrossAxisRanges = IntervalTreeMap<Int>()
          pushedWindowCrossAxisRanges.insert(projector.crossAxisRange(window), projector.beforeTrailingEdge(window, 0))
-         val overlappersToRemove = mutableListOf<IntervalTree.OverlapResult<Int>>()
+         val overlappersToRemove = mutableListOf<IntervalTreeMap.OverlapResult<Int>>()
          var pendingWindows = mutableListOf(window)
          var hitWindows = mutableListOf<Window>()
 
@@ -329,9 +330,10 @@ class WindowManager(val screenWidth: Int, val screenHeight: Int) {
                } else if (leadingSpace == minimumSpace) {
                   hitWindows.add(collisionWindow)
                }
-               @Suppress("ConvertArgumentToSet")
-               collisionSet.removeAll(hitWindows)
             }
+
+            @Suppress("ConvertArgumentToSet")
+            collisionSet.removeAll(hitWindows)
 
             // hit window calculations use updated data here
             minTrailingSpaceToBound -= minimumSpace
@@ -339,10 +341,11 @@ class WindowManager(val screenWidth: Int, val screenHeight: Int) {
             movedAmount += minimumSpace
 
             for (hitWindow in hitWindows) {
+               movedWindowIDs.set(hitWindow.ID)
                val hitWindowCrossRange = projector.crossAxisRange(hitWindow)
                val overlappers = pushedWindowCrossAxisRanges.overlappers(hitWindowCrossRange)
-               var leadingOverlapperReplacement: IntervalTree.OverlapResult<Int>? = null
-               var trailingOverlapperReplacement: IntervalTree.OverlapResult<Int>? = null
+               var leadingOverlapperReplacement: IntervalTreeMap.OverlapResult<Int>? = null
+               var trailingOverlapperReplacement: IntervalTreeMap.OverlapResult<Int>? = null
 
                // for each hit window, more windows may become collision candidates
                val newCollisions = projector.findCollisions(hitWindow, remainder, windowList)
@@ -360,18 +363,18 @@ class WindowManager(val screenWidth: Int, val screenHeight: Int) {
                      // we mark the overlapper for replacement by its prefix before window
                      val leadingInterval = IntRange(overlapperInterval.first, hitWindowCrossRange.first - 1)
                      if (overlapperInterval.last < hitWindowCrossRange.last) {
-                        leadingOverlapperReplacement = IntervalTree.OverlapResult(leadingInterval, overlapper.ancillary)
+                        leadingOverlapperReplacement = IntervalTreeMap.OverlapResult(leadingInterval, overlapper.ancillary)
                      } else {
                         // case 2: the overlapper subsumes the window, but window interval must replace it, splitting it.
-                        leadingOverlapperReplacement = IntervalTree.OverlapResult(leadingInterval, overlapper.ancillary)
+                        leadingOverlapperReplacement = IntervalTreeMap.OverlapResult(leadingInterval, overlapper.ancillary)
                         val trailingInterval = IntRange(hitWindowCrossRange.last + 1, overlapperInterval.last)
-                        trailingOverlapperReplacement = IntervalTree.OverlapResult(trailingInterval, overlapper.ancillary)
+                        trailingOverlapperReplacement = IntervalTreeMap.OverlapResult(trailingInterval, overlapper.ancillary)
                      }
                   }
                   // case 3: the overlapper starts after the window starts, and extends past it
                   else if (overlapperInterval.last > hitWindowCrossRange.last) {
                      val trailingInterval = IntRange(hitWindowCrossRange.last + 1, overlapperInterval.last)
-                     trailingOverlapperReplacement = IntervalTree.OverlapResult(trailingInterval, overlapper.ancillary)
+                     trailingOverlapperReplacement = IntervalTreeMap.OverlapResult(trailingInterval, overlapper.ancillary)
                   }
                   // in case 4, the window subsumes the overlapper, we do nothing since we remove overlapper anyway
                }
@@ -411,23 +414,26 @@ class WindowManager(val screenWidth: Int, val screenHeight: Int) {
 
       // update the windows and trees
       // The windows have to be all removed, update their coordinates and then re-added
-      val movedWindowIDs = hashSetOf<Int>()
+      var windowID = movedWindowIDs.nextSetBit(0)
+      while (windowID >= 0) {
+         removeFromUpperLeftTree(windowList[windowID])
+         removeFromLowerRightTree(windowList[windowID])
+         windowID = movedWindowIDs.nextSetBit(windowID + 1)
+      }
+
       movedAmount = 0
       for (info in pushList.asReversed()) {
          movedAmount += info.distance
          for (movedWindow in info.windows) {
-            if (!movedWindowIDs.contains(movedWindow.ID)) {
-               removeFromUpperLeftTree(movedWindow)
-               removeFromLowerRightTree(movedWindow)
-               movedWindowIDs.add(movedWindow.ID)
-            }
             projector.moveWindowBy(movedWindow, movedAmount)
          }
       }
 
-      for (windowID in movedWindowIDs) {
+      windowID = movedWindowIDs.nextSetBit(0)
+      while (windowID >= 0) {
          addToUpperLeftTree(windowList[windowID])
          addToLowerRightTree(windowList[windowID])
+         windowID = movedWindowIDs.nextSetBit(windowID + 1)
       }
 
       assert(upperLeft2DTree.size() == lowerRight2DTree.size())
@@ -475,8 +481,7 @@ private abstract class DimensionProjector protected constructor(
    companion object {
       fun create(
          dimension: Dimension,
-         dimMaximum: Int,
-         crossDimensionMaximum: Int,
+         spaceBounds: Rectangle,
          towardsPositiveInfinity: Boolean,
          upperLeftTree: TwoDTreeMap<Int>,
          lowerRightTree: TwoDTreeMap<Int>,
@@ -495,11 +500,11 @@ private abstract class DimensionProjector protected constructor(
                      window.xRange
 
                   override fun trailingSpaceToBound(window: Window): Int =
-                     dimMaximum - window.xRange.last
+                     spaceBounds.width - window.xRange.last
 
                   override fun findCollisions(window: Window, width: Int, windowList: List<Window>): List<Window> {
                      return upperLeftTree
-                        .findAll(window.xRange.last + 1..window.xRange.last + width, 0..window.yRange.last)
+                        .findAll(window.xRange.last + 1..window.xRange.last + width, spaceBounds.y..window.yRange.last)
                         .mapNotNull { if (windowList[it].yRange.last >= window.yRange.first) windowList[it] else null }
                   }
 
@@ -526,11 +531,11 @@ private abstract class DimensionProjector protected constructor(
                      window.xRange
 
                   override fun trailingSpaceToBound(window: Window): Int =
-                     window.xRange.first - dimMaximum
+                     window.xRange.first - spaceBounds.x
 
                   override fun findCollisions(window: Window, width: Int, windowList: List<Window>): List<Window> {
                      return lowerRightTree
-                        .findAll(window.xRange.first - width..< window.xRange.first, window.yRange.first .. crossDimensionMaximum)
+                        .findAll(window.xRange.first - width..< window.xRange.first, window.yRange.first .. spaceBounds.height)
                         .mapNotNull { if (windowList[it].yRange.first <= window.yRange.last) windowList[it] else null }
                   }
 
@@ -559,11 +564,11 @@ private abstract class DimensionProjector protected constructor(
                      window.yRange
 
                   override fun trailingSpaceToBound(window: Window): Int =
-                     dimMaximum - window.yRange.last
+                     spaceBounds.height - window.yRange.last
 
                   override fun findCollisions(window: Window, width: Int, windowList: List<Window>): List<Window> {
                      return upperLeftTree
-                        .findAll(0 .. window.xRange.last, window.yRange.last + 1 .. window.yRange.last + width)
+                        .findAll(spaceBounds.x .. window.xRange.last, window.yRange.last + 1 .. window.yRange.last + width)
                         .mapNotNull { if (windowList[it].xRange.last >= window.xRange.first) windowList[it] else null }
                   }
 
@@ -590,11 +595,11 @@ private abstract class DimensionProjector protected constructor(
                      window.yRange
 
                   override fun trailingSpaceToBound(window: Window): Int =
-                     window.yRange.first - dimMaximum
+                     window.yRange.first - spaceBounds.y
 
                   override fun findCollisions(window: Window, width: Int, windowList: List<Window>): List<Window> {
                      return lowerRightTree
-                        .findAll(window.xRange.first .. crossDimensionMaximum, window.yRange.first - width..< window.yRange.first)
+                        .findAll(window.xRange.first .. spaceBounds.width, window.yRange.first - width..< window.yRange.first)
                         .mapNotNull { if (windowList[it].xRange.first <= window.xRange.last) windowList[it] else null }
                   }
 

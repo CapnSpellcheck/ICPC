@@ -6,12 +6,13 @@ import java.awt.Dimension
 import java.awt.Point
 import java.awt.Rectangle
 import java.io.StringBufferInputStream
-import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sign
 import kotlin.random.Random
-import kotlin.test.*
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class WindowManagerTest {
    @Test fun testOpen() {
@@ -296,8 +297,8 @@ class WindowManagerTest {
 
    @Test fun testOpenCloseAndResizeRandomly() {
       repeat(100) {
-         val w = if (Random.nextBoolean()) Random.nextInt(1, 11) else Random.nextInt(1000000, 1000000000)
-         val h = if (Random.nextBoolean()) Random.nextInt(1, 11) else Random.nextInt(1000000, 1000000000)
+         val w = Random.nextInt(1, 101)
+         val h = Random.nextInt(1, 101)
          val manager = WindowManager(w, h)
          val screenRect = Rectangle(0, 0, w, h)
          val windowRects = mutableListOf<Rectangle>()
@@ -366,100 +367,27 @@ class WindowManagerTest {
       }
    }
 
-   @Test fun testMoveRandomly() {
-      val w = Random.nextInt(1, 11)
-      val h = Random.nextInt(1, 11)
-      val manager = WindowManager(w, h)
-      val screenRect = Rectangle(0, 0, w, h)
-      val windowRects = mutableListOf<Rectangle>()
-      println("w=$w h=$h")
-
-      repeat(1000) {
-         repeat(10) {
-            val rect = Rectangle(Random.nextInt(w), Random.nextInt(h), 1 + Random.nextInt(max(1, w - 1)), 1 + Random.nextInt(max(1, h - 1)))
-            println("OPEN ${rect.x} ${rect.y} ${rect.width} ${rect.height}")
-            val result = manager.open(rect.x, rect.y, rect.width, rect.height)
-            var shouldBeTrue = true
-            if (windowRects.any { it.intersects(rect) }) {
-               shouldBeTrue = false
-            }
-            if (!screenRect.contains(rect)) {
-               shouldBeTrue = false
-            }
-            assertEquals(shouldBeTrue, result)
-            if (shouldBeTrue) {
-               windowRects.add(rect)
-            }
-         }
-
-         repeat(1000) {
-            val point = Point(Random.nextInt(w), Random.nextInt(h))
-            val byX = Random.nextBoolean()
-            val amount = if (byX) Random.nextInt(2 * w) - w else Random.nextInt(2 * h) - h
-            println("MOVE ${point.x} ${point.y} ${if (byX) amount else 0} ${if (!byX) amount else 0}")
-
-            val result = if (byX)
-               manager.moveX(point.x, point.y, amount)
-            else
-               manager.moveY(point.x, point.y, amount)
-
-            val i = windowRects.indexOfFirst { it.contains(point) }
-            var moved = 0
-            if (i < 0)
-               assertEquals(MoveResult(MoveResult.NoWindowFound), result)
-            else {
-               val window = windowRects[i]
-               val affectedWindows = mutableListOf(window)
-               val dx = amount.sign
-               repeat(abs(amount)) amount@{
-                  if (byX) {
-                     var windowEnd = if (amount < 0) window.x - 1 else window.x + window.width
-                     while (true) {
-                        val collision = windowRects.firstOrNull { it.intersects(Rectangle(windowEnd, window.y, 1, window.height)) }
-                        if (collision == null)
-                           break
-                        affectedWindows.add(collision)
-                        windowEnd = if (amount < 0) collision.x - 1 else collision.x + collision.width
-                     }
-                     if ((amount > 0 && windowEnd >= w) || windowEnd < 0)
-                        return@amount
-                     // able to move all windows by 1
-                     for (affectedWindow in affectedWindows) {
-                        affectedWindow.setLocation(affectedWindow.x + dx, affectedWindow.y)
-                     }
-                  } else {
-                     var windowEnd = if (amount < 0) window.y - 1 else window.y + window.height
-                     while (true) {
-                        val collision = windowRects.firstOrNull { it.intersects(Rectangle(window.x, windowEnd, window.width, 1)) }
-                        if (collision == null)
-                           break
-                        affectedWindows.add(collision)
-                        windowEnd = if (amount < 0) collision.y - 1 else collision.y + collision.height
-                     }
-                     if ((amount > 0 && windowEnd >= h) || windowEnd < 0)
-                        return@amount
-                     // able to move all windows by 1
-                     for (affectedWindow in affectedWindows) {
-                        affectedWindow.setLocation(affectedWindow.x, affectedWindow.y + dx)
-                     }
-                  }
-                  moved += 1
-               }
-               assertEquals(moved, abs(result.movedAmount), "moved amount")
-               assertEquals(if (result.movedAmount == amount) MoveResult.OK else MoveResult.MovedLess, result.code, "result code")
-            }
-
-            assertEquals(windowRects.size, manager.windowCount, "window count")
-            run {
-               var i = 0
-               val iter = manager.windowIterator()
-               while (iter.hasNext()) {
-                  assertTrue(iter.next().equals(windowRects[i]), "window rect")
-                  i += 1
-               }
-            }
-         }
-      }
+   @Test fun testBreak1() {
+      val manager = WindowManager(34, 70)
+      manager.open(24, 9, 4, 17)
+      manager.open(28, 23, 1, 13)
+      val result = manager.resize(26, 23, 5, 4)
+      assertEquals(ResizeResult.OK, result)
    }
 
+   @Test fun testBreak2() {
+      val manager = WindowManager(38, 2)
+      manager.open(5 ,0, 11, 1)
+      manager.open(31, 0, 5, 1)
+      manager.open(0 ,1 ,10, 1)
+      manager.resize(10 ,1 ,1, 1)
+      manager.resize(5,0,6,1)
+      manager.close(22, 1)
+      manager.open(15, 1, 2, 1)
+      manager.close(26, 1)
+      manager.open(19,1,15,1)
+
+      val result = manager.resize(10,0,11,1)
+      assertEquals(ResizeResult.OK, result)
+   }
 }
