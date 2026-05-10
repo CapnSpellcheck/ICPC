@@ -23,8 +23,8 @@ class WindowManagerTest {
             val origin = Point(Random.nextInt(dim), Random.nextInt(dim))
             // dimension is at most 1/10th of screen
             val size = Dimension(
-               if (origin.x + 1 == dim) 1 else Random.nextInt(1, min(dim / 5, dim - origin.x)),
-               if (origin.y + 1 == dim) 1 else Random.nextInt(1, min(dim / 5, dim - origin.y))
+               if (origin.x + 1 == dim) 1 else Random.nextInt(1, min(dim / 10, dim - origin.x)),
+               if (origin.y + 1 == dim) 1 else Random.nextInt(1, min(dim / 10, dim - origin.y))
             )
             val rect = Rectangle(origin, size)
             val retval = manager.open(origin.x, origin.y, size.width, size.height)
@@ -64,6 +64,7 @@ class WindowManagerTest {
       repeat(1000) {
          val x = Random.nextInt(1000)
          val y = Random.nextInt(2000)
+         println("manager.close($x, $y)")
          val closed = manager.close(x, y)
          val match = windowRects.firstOrNull { it.intersects(Rectangle(x, y, 1, 1))  }
          match?.let { match ->
@@ -270,25 +271,30 @@ class WindowManagerTest {
       """.trimIndent() + "\n", sos.toString())
    }
 
-   @Test fun npeTest() {
-      repeat(100) {
-         val w = if (Random.nextBoolean()) Random.nextInt(1, 11) else Random.nextInt(1000000, 1000000000)
-         val h = if (Random.nextBoolean()) Random.nextInt(1, 11) else Random.nextInt(1000000, 1000000000)
+   @Test fun testAllCommandsEnsuringCodeAssertions() {
+      repeat(1000) {
+         val w = 5
+         val h = 5
+         println("---- NEW CASE $w $h----")
 
-         // generate 500 random commands
-         val commandsWithParams = (1 .. 500).map { i ->
+         // generate 250 random commands
+         val commandsWithParams = (1 .. 250).map { i ->
             val f = Random.nextFloat()
+            val x = Random.nextInt(w)
+            val y = Random.nextInt(h)
+            val w = 1 + Random.nextInt(max(1, x / 2))
+            val h = 1 + Random.nextInt(max(1, y / 2))
             if (f < 0.25) {
-               Pair(Command.OPEN, intArrayOf(Random.nextInt(w), Random.nextInt(h), Random.nextInt(max(1, w / 2)), Random.nextInt(max(1, h / 2))))
-            } else if (f < 0.5) {
-               Pair(Command.CLOSE, intArrayOf(Random.nextInt(w), Random.nextInt(h)))
+               Pair(Command.OPEN, intArrayOf(x, y, w, h))
+            } else if (f < 0.4) {
+               Pair(Command.CLOSE, intArrayOf(x, y))
             } else if (f < 0.75) {
-               Pair(Command.RESIZE, intArrayOf(Random.nextInt(w), Random.nextInt(h), Random.nextInt(max(1, w / 2)), Random.nextInt(max(1, h / 2))))
+               Pair(Command.RESIZE, intArrayOf(x, y, w, h))
             } else {
                val moveX = Random.nextBoolean()
                val moveGreater = Random.nextBoolean()
-               val moveAmount = Random.nextInt(max(1, if (moveX) w / 2 else h / 2)) * (if (moveGreater) 1 else -1)
-               Pair(Command.MOVE, intArrayOf(Random.nextInt(w), Random.nextInt(h), if (moveX) moveAmount else 0, if (!moveX) moveAmount else 0))
+               val moveAmount = Random.nextInt(max(1, if (moveX) x / 2 else y / 2)) * (if (moveGreater) 1 else -1)
+               Pair(Command.MOVE, intArrayOf(x, y, if (moveX) moveAmount else 0, if (!moveX) moveAmount else 0))
             }
          }.unzip()
          simulateWindowManager(w, h, commandsWithParams.first, commandsWithParams.second)
@@ -367,6 +373,68 @@ class WindowManagerTest {
       }
    }
 
+   @Test fun testMoveABunchOfWindowsDown() {
+      val manager = WindowManager(100, 100)
+      manager.open(40, 47, 20, 20)
+      manager.open(66, 35, 25, 25)
+      manager.open(35, 25, 7, 8)
+      manager.open(55, 20, 40, 10)
+      manager.open(7, 55, 20, 33)
+      manager.open(40, 5, 20, 8)
+      manager.open(22, 41, 16, 7)
+
+      val result = manager.moveY(50, 8, 100)
+      assertEquals(MoveResult.MovedLess, result.code)
+      assertEquals(39, result.movedAmount)
+      val windows = manager.windowIterator().asSequence().toList()
+      assertEquals(62, windows[0].originY)
+      assertEquals(62, windows[1].originY)
+      assertEquals(52, windows[2].originY)
+      assertEquals(52, windows[3].originY)
+      assertEquals(67, windows[4].originY)
+      assertEquals(44, windows[5].originY)
+      assertEquals(60, windows[6].originY)
+   }
+
+   @Test fun testMoveABunchOfWindowsRight() {
+      val manager = WindowManager(100, 100)
+      manager.open(47, 40, 20, 20)
+      manager.open(35, 66, 25, 25)
+      manager.open(25, 35, 8, 7)
+      manager.open(20, 55, 10, 40)
+      manager.open(55, 7, 33, 20)
+      manager.open(5, 40, 8, 20)
+      manager.open(41, 22, 7, 16)
+
+      val result = manager.moveX(8, 50, 100)
+      assertEquals(MoveResult.MovedLess, result.code)
+      assertEquals(39, result.movedAmount)
+      val windows = manager.windowIterator().asSequence().toList()
+      assertEquals(62, windows[0].originX)
+      assertEquals(62, windows[1].originX)
+      assertEquals(52, windows[2].originX)
+      assertEquals(52, windows[3].originX)
+      assertEquals(67, windows[4].originX)
+      assertEquals(44, windows[5].originX)
+      assertEquals(60, windows[6].originX)
+   }
+
+   @Test fun testMoveWithWindowHiddenInMiddle() {
+      val manager = WindowManager(100, 100)
+      manager.open(20, 8, 20, 80)
+      manager.open(80, 25, 8, 50)
+      manager.open(42, 30, 32, 10)
+      manager.open(55, 68, 10, 12)
+
+      val result = manager.moveX(85, 50, -100)
+      assertEquals(28, result.movedAmount)
+      val windows = manager.windowIterator().asSequence().toList()
+      assertEquals(0, windows[0].originX)
+      assertEquals(52, windows[1].originX)
+      assertEquals(20, windows[2].originX)
+      assertEquals(42, windows[3].originX)
+   }
+
    @Test fun testBreak1() {
       val manager = WindowManager(34, 70)
       manager.open(24, 9, 4, 17)
@@ -390,4 +458,44 @@ class WindowManagerTest {
       val result = manager.resize(10,0,11,1)
       assertEquals(ResizeResult.OK, result)
    }
+
+   @Test fun testBreak3() {
+      val manager = WindowManager(38, 2)
+      manager.open(8, 62553, 0, 10297)
+      manager.open(6, 13108, 3, 44359)
+      manager.close(8, 58057)
+      manager.close(6, 16518)
+      manager.open(6, 38841, 1, 36165)
+      manager.moveX(6, 42563, 2)
+   }
+
+   @Test fun testBreak4() {
+      val manager = WindowManager(5,5)
+      manager.open(1, 2, 1, 1)
+      manager.resize(2, 0, 1, 1)
+      manager.close(4, 4)
+      manager.moveX(1, 1, 0)
+      manager.open(2, 4, 1, 2)
+      manager.close(3, 3)
+      manager.resize(1, 1, 1, 1)
+      manager.open(2, 0, 1, 1)
+      manager.resize(0, 0, 1, 1)
+      manager.open(0, 4, 1, 2)
+      manager.close(0, 0)
+      manager.resize(0, 0, 1, 1)
+      manager.moveY(2, 0, 0)
+      manager.moveX(4, 3, 0)
+      manager.close(2, 3)
+      manager.open(1, 4, 1, 1)
+      manager.open(0, 3, 1, 1)
+      manager.resize(1, 4, 1, 2)
+      manager.resize(0, 2, 1, 1)
+      manager.moveX(3, 0, 0)
+      manager.resize(3, 1, 1, 1)
+      manager.open(2, 2, 1, 1)
+      manager.open(1, 1, 1, 1)
+      manager.open(1, 3, 1, 1)
+      manager.moveY(1, 4, -1)
+   }
+
 }

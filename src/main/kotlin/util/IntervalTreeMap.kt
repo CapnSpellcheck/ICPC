@@ -3,6 +3,7 @@ package util
 import java.util.*
 import kotlin.math.max
 
+
 class IntervalTreeMap<V> {
    private abstract class NodeOrProxy<T> {
       abstract val parent: Node<T>?
@@ -70,6 +71,24 @@ class IntervalTreeMap<V> {
             cur.leftChild?.let { cur = it } ?: break
          }
          return cur
+      }
+
+      /**
+       * The successor of this Node.
+       * @return the Node following this Node, if it exists; otherwise the
+       * sentinel Node
+       */
+      fun successor(): Node<V>? {
+         rightChild?.let {
+            return it.minimumNode()
+         }
+         var cur = this
+         var parent = parent
+         while (parent != null && cur == parent.rightChild) {
+            cur = parent
+            parent = parent.parent
+         }
+         return parent
       }
 
       ///////////////////////////////////////
@@ -366,6 +385,13 @@ class IntervalTreeMap<V> {
     */
    fun get(int: IntRange): V? = search(int)?.ancillary
 
+   /**
+    * An Iterator which traverses the tree in ascending order.
+    */
+   operator fun iterator(): Iterator<OverlapResult<V>> {
+      return root?.let { TreeIterator(it) } ?: Collections.emptyIterator()
+   }
+
    ///////////////////////////////
    // Tree -- Mutation methods //
    ///////////////////////////////
@@ -658,10 +684,6 @@ class IntervalTreeMap<V> {
       }
    }
 
-   /**
-    * An Iterator which walks along this IntervalTree's Nodes that overlap
-    * a given Interval in ascending order.
-    */
    private class OverlappingNodeIterator<V>(root: Node<V>, t: IntRange) : Iterator<Node<V>> {
       private var next: Node<V>?
       private val interval: IntRange = t
@@ -677,6 +699,42 @@ class IntervalTreeMap<V> {
       override fun next(): Node<V> {
          val retval = next!!
          next = retval.nextOverlappingNode(interval)
+         return retval
+      }
+   }
+
+   /**
+    * An Iterator which walks along this IntervalTree's Intervals in ascending
+    * order.
+    *
+    * This class just wraps a TreeNodeIterator and extracts each Node's Interval.
+    */
+   private class TreeIterator<V>(root: Node<V>) : Iterator<OverlapResult<V>> {
+      private val nodeIter = TreeNodeIterator(root)
+
+      override fun hasNext(): Boolean {
+         return nodeIter.hasNext()
+      }
+
+      override fun next(): OverlapResult<V> {
+         val node = nodeIter.next()
+         return OverlapResult(node.interval, node.ancillary)      }
+   }
+
+   private class TreeNodeIterator<V>(root: Node<V>) : Iterator<Node<V>> {
+      private var next: Node<V>?
+
+      init {
+         next = root.minimumNode()
+      }
+
+      override fun hasNext(): Boolean {
+         return next != null
+      }
+
+      override fun next(): Node<V> {
+         val retval = next!!
+         next = retval.successor()
          return retval
       }
    }
