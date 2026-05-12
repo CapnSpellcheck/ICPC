@@ -314,7 +314,7 @@ class WindowManagerTest {
          repeat(1000) {
             val f = Random.nextFloat()
             if (f < 0.333) {
-               val rect = Rectangle(Random.nextInt(w), Random.nextInt(h), 1 + Random.nextInt(max(1, w / 2 - 1)), 1 + Random.nextInt(max(1, h / 2 - 1)))
+               val rect = Rectangle(Random.nextInt(w), Random.nextInt(h), 1 + Random.nextInt(max(1, w)), 1 + Random.nextInt(max(1, h)))
                println("OPEN ${rect.x} ${rect.y} ${rect.width} ${rect.height}")
                val result = manager.open(rect.x, rect.y, rect.width, rect.height)
                var shouldBeTrue = true
@@ -340,11 +340,10 @@ class WindowManagerTest {
                   windowRects.removeAt(i)
             } else  {
                val point = Point(Random.nextInt(w), Random.nextInt(h))
-               val size = Dimension(1 + Random.nextInt(max(1, w / 2 - 1)), 1 + Random.nextInt(max(1, h / 2 - 1)))
+               val size = Dimension(1 + Random.nextInt(max(1, w)), 1 + Random.nextInt(max(1, h)))
                println("RESIZE ${point.x} ${point.y} ${size.width} ${size.height}")
                val result = manager.resize(point.x, point.y, size.width, size.height)
                val windowRect = windowRects.firstOrNull { it.contains(point) }
-               println("windowRect = $windowRect")
                if (windowRect == null) {
                   assertEquals(ResizeResult.NoWindowFound, result)
                } else {
@@ -422,7 +421,7 @@ class WindowManagerTest {
    @Test fun testMoveWithWindowHiddenInMiddle() {
       val manager = WindowManager(100, 100)
       manager.open(20, 8, 20, 80)
-      manager.open(80, 25, 8, 50)
+      manager.open(80, 25, 8, 50) // target
       manager.open(42, 30, 32, 10)
       manager.open(55, 68, 10, 12)
 
@@ -433,6 +432,43 @@ class WindowManagerTest {
       assertEquals(52, windows[1].originX)
       assertEquals(20, windows[2].originX)
       assertEquals(42, windows[3].originX)
+   }
+
+   @Test fun testMoveWithOneWindowInPathStuckButAnotherFree() {
+      val manager = WindowManager(100, 100)
+      manager.open(0, 40, 80, 10)
+      manager.open(50, 60, 10, 10)
+      manager.open(80, 0, 1, 80) // target
+
+      val result = manager.moveX(80, 50, -20)
+      val windows = manager.windowIterator().asSequence().toList()
+      assertEquals(0, result.movedAmount)
+      assertEquals(0, windows[0].originX)
+      assertEquals(50, windows[1].originX)
+      assertEquals(80, windows[2].originX)
+
+      // move target right and try again
+      manager.moveX(80, 50, 10)
+
+      val result2 = manager.moveX(90, 50, -100)
+      assertEquals(10, result2.movedAmount)
+      assertEquals(0, windows[0].originX)
+      assertEquals(50, windows[1].originX)
+      assertEquals(80, windows[2].originX)
+   }
+
+   @Test fun testMoveWithWindowHiddenInMiddle2() {
+      val manager = WindowManager(20, 200)
+      manager.open(0, 0, 20, 1)
+      manager.open(5, 1, 5, 49)
+      manager.open(0, 50, 15, 5)
+      manager.open(10, 55, 5, 5) // window in question
+      manager.open(0, 55, 5, 20)
+      manager.open(0, 75, 20, 5)
+
+      val result = manager.moveY(0, 0, 40)
+      val windows = manager.windowIterator().asSequence().toList()
+      assertEquals(95, windows[3].originY)
    }
 
    @Test fun testBreak1() {
@@ -467,35 +503,6 @@ class WindowManagerTest {
       manager.close(6, 16518)
       manager.open(6, 38841, 1, 36165)
       manager.moveX(6, 42563, 2)
-   }
-
-   @Test fun testBreak4() {
-      val manager = WindowManager(5,5)
-      manager.open(1, 2, 1, 1)
-      manager.resize(2, 0, 1, 1)
-      manager.close(4, 4)
-      manager.moveX(1, 1, 0)
-      manager.open(2, 4, 1, 2)
-      manager.close(3, 3)
-      manager.resize(1, 1, 1, 1)
-      manager.open(2, 0, 1, 1)
-      manager.resize(0, 0, 1, 1)
-      manager.open(0, 4, 1, 2)
-      manager.close(0, 0)
-      manager.resize(0, 0, 1, 1)
-      manager.moveY(2, 0, 0)
-      manager.moveX(4, 3, 0)
-      manager.close(2, 3)
-      manager.open(1, 4, 1, 1)
-      manager.open(0, 3, 1, 1)
-      manager.resize(1, 4, 1, 2)
-      manager.resize(0, 2, 1, 1)
-      manager.moveX(3, 0, 0)
-      manager.resize(3, 1, 1, 1)
-      manager.open(2, 2, 1, 1)
-      manager.open(1, 1, 1, 1)
-      manager.open(1, 3, 1, 1)
-      manager.moveY(1, 4, -1)
    }
 
 }

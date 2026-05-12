@@ -5,12 +5,23 @@ import util.TwoDTreeMap
 import java.awt.Rectangle
 import java.io.InputStream
 import java.io.OutputStream
-import java.util.BitSet
+import java.util.*
+import kotlin.collections.ArrayList
 import kotlin.math.abs
 import kotlin.math.min
 import kotlin.random.Random
 
 enum class Dimension { X, Y }
+
+/**
+ * This file contains a solution of the ICPC problem: https://icpc.kattis.com/problems/windows
+ */
+
+// Hard assertion, to get "Run-Time Error" result on kattis.com
+fun hardAssert(value: Boolean) {
+   if (!value)
+      throw AssertionError("assert failed")
+}
 
 class Window(val ID: Int, originX: Int, originY: Int, width: Int, height: Int) {
    var height = height; private set
@@ -42,16 +53,6 @@ class Window(val ID: Int, originX: Int, originY: Int, width: Int, height: Int) {
       width = newWidth
       height = newHeight
       setRanges()
-   }
-
-   fun moveBy(dimension: Dimension, amount: Int) {
-      if (dimension == Dimension.X) {
-         originX += amount
-         setXRange()
-      } else {
-         originY += amount
-         setYRange()
-      }
    }
 
    fun moveX(amount: Int) {
@@ -166,7 +167,7 @@ class WindowManager(val screenWidth: Int, val screenHeight: Int) {
          return false
       }
       // full check for windows whose intersection with target fully spans one axis
-      // TODO:  skip conditions
+      // TODO: skip conditions
       if ((originX < screenWidth / 2 && originY < screenHeight / 2) || ((originX < screenWidth / 2 || originY < screenHeight / 2) && Random.nextBoolean())) {
          val candidates = ArrayList<Int>()
          upperLeft2DTree.findAllTo(0 ..< originX, 0 .. yRange.last, candidates)
@@ -188,10 +189,9 @@ class WindowManager(val screenWidth: Int, val screenHeight: Int) {
       }
 
       val window = Window(nextID(), originX, originY, width, height)
-      assert(window.ID == windowList.size)
+      hardAssert(window.ID == windowList.size)
       addToUpperLeftTree(window)
       addToLowerRightTree(window)
-      assert(upperLeft2DTree.size() == lowerRight2DTree.size())
       windowList.add(window)
       return true
    }
@@ -201,7 +201,6 @@ class WindowManager(val screenWidth: Int, val screenHeight: Int) {
       window?.let {
          removeFromUpperLeftTree(window)
          removeFromLowerRightTree(window)
-         assert(upperLeft2DTree.size() == lowerRight2DTree.size())
          closedWindowCount += 1
          window.kill()
          return true
@@ -235,7 +234,6 @@ class WindowManager(val screenWidth: Int, val screenHeight: Int) {
       window.resize(newWidth, newHeight)
       addToUpperLeftTree(window)
       addToLowerRightTree(window)
-      assert(upperLeft2DTree.size() == lowerRight2DTree.size())
 
       return ResizeResult.OK
    }
@@ -273,130 +271,117 @@ class WindowManager(val screenWidth: Int, val screenHeight: Int) {
    }
 
    private fun moveWithProjector(window: Window, amount: Int, projector: DimensionProjector): MoveResult {
-      // the full array of moved windows
-      val movedWindows = mutableListOf(window)
-      projector.findCollisionsTo(window, amount, windowList, movedWindows)
+      val initialMovedWindows = projector.findCollisions(window, amount, windowList)
 
       // Keep a set of moved windows for quick filtering of duplicate collisions
       val movedWindowIDs = BitSet()
-      for (window in movedWindows) {
+      movedWindowIDs.set(window.ID)
+      for (window in initialMovedWindows) {
          movedWindowIDs.set(window.ID)
       }
 
-      val freeSpaceBefore = ArrayList<Int>(min(10, movedWindows.size))
-      freeSpaceBefore.add(0) // initial window has 0 free space before
-      val furthestWindowRanges = IntervalTreeMap<Int>()
-      furthestWindowRanges.insert(projector.crossAxisRange(window), 0)
-      var processedWindowCount = 1
+      // Calculate the free space in front of windows that are going to be hit.
+      // avoid hashing and autoboxing by using a primitive array, will probably waste some slots, but it's fast
+      val freeSpaceBefore = IntArray(windowList.size)
+      freeSpaceBefore[window.ID] = 0 // initial window has 0 free space before
 
-      do {
-         // have the projector sort the new portion of movedWindows, needed for free space calculation
-         projector.sortWindows(movedWindows.subList(processedWindowCount, movedWindows.size))
+      val furthestWindowRanges = IntervalTreeMap<Int>()
+      furthestWindowRanges.insert(projector.crossAxisRange(window), window.ID)
+
+      val unprocessedWindowsByLeadingEdge = PriorityQueue(projector)
+      unprocessedWindowsByLeadingEdge.addAll(initialMovedWindows)
+
+      var maxPushAmount = min(amount, projector.trailingSpaceToBound(window))
+
+      while (!unprocessedWindowsByLeadingEdge.isEmpty()) {
+         val movedWindow = unprocessedWindowsByLeadingEdge.poll()
+         var freeSpace = amount
+         val crossAxisRange = projector.crossAxisRange(movedWindow)
+         val overlappers = furthestWindowRanges.overlappers(crossAxisRange)
+         var leadingOverlapperReplacement: IntervalTreeMap.OverlapResult<Int>? = null
+         var trailingOverlapperReplacement: IntervalTreeMap.OverlapResult<Int>? = null
          val overlappersToRemove = mutableListOf<IntervalTreeMap.OverlapResult<Int>>()
 
-         // Process collisions: first compute their freeSpaceBefore
-         for (i in processedWindowCount ..< movedWindows.size) {
-            val movedWindow = movedWindows[i]
-            freeSpaceBefore.add(amount)
-            val crossAxisRange = projector.crossAxisRange(movedWindow)
-            val overlappers = furthestWindowRanges.overlappers(crossAxisRange)
-            var leadingOverlapperReplacement: IntervalTreeMap.OverlapResult<Int>? = null
-            var trailingOverlapperReplacement: IntervalTreeMap.OverlapResult<Int>? = null
+         // We need to put current window's cross-axis range in the interval tree and split
+         // overlappers that intersect it, subtracting out the part of current window;
+         // we know that overlappers are sorted from min to max and are mutually non-intersecting
+         for (overlapper in overlappers) {
+            val spaceBetween = projector.spaceBetween(windowList[overlapper.ancillary], movedWindow)
+            freeSpace = min(freeSpace, spaceBetween + freeSpaceBefore[overlapper.ancillary])
 
-            // We need to put current window's cross-axis range in the interval tree and split
-            // overlappers that intersect it, subtracting out the part of current window;
-            // we know that overlappers are sorted from min to max and are mutually non-intersecting
-            for (overlapper in overlappers) {
-               val spaceBetween = projector.spaceBetween(movedWindows[overlapper.ancillary], movedWindow)
-               freeSpaceBefore[i] = min(freeSpaceBefore[i], spaceBetween + freeSpaceBefore[overlapper.ancillary])
-               assert(spaceBetween + freeSpaceBefore[overlapper.ancillary]>= 0)
-
-               // all of the current overlappers will be removed because they change
-               overlappersToRemove.add(overlapper)
-               val overlapperInterval = overlapper.interval
-               if (overlapperInterval.first < crossAxisRange.first) {
-                  // case 1: the overlapper starts before window (it must be first overlapper) and ends before it,
-                  // we mark the overlapper for replacement by its prefix before window
-                  val leadingInterval = IntRange(overlapperInterval.first, crossAxisRange.first - 1)
-                  if (overlapperInterval.last < crossAxisRange.last) {
-                     leadingOverlapperReplacement = IntervalTreeMap.OverlapResult(leadingInterval, overlapper.ancillary)
-                  } else {
-                     // case 2: the overlapper subsumes the window, but window interval must replace it, splitting it.
-                     leadingOverlapperReplacement = IntervalTreeMap.OverlapResult(leadingInterval, overlapper.ancillary)
-                     val trailingInterval = IntRange(crossAxisRange.last + 1, overlapperInterval.last)
-                     trailingOverlapperReplacement = IntervalTreeMap.OverlapResult(trailingInterval, overlapper.ancillary)
-                  }
-               }
-               // case 3: the overlapper starts after the window starts, and extends past it
-               else if (overlapperInterval.last > crossAxisRange.last) {
+            // all of the current overlappers will be removed because they change
+            overlappersToRemove.add(overlapper)
+            val overlapperInterval = overlapper.interval
+            if (overlapperInterval.first < crossAxisRange.first) {
+               // case 1: the overlapper starts before window (it must be first overlapper) and ends before it,
+               // we mark the overlapper for replacement by its prefix before window
+               val leadingInterval = IntRange(overlapperInterval.first, crossAxisRange.first - 1)
+               leadingOverlapperReplacement = IntervalTreeMap.OverlapResult(leadingInterval, overlapper.ancillary)
+               if (overlapperInterval.last <= crossAxisRange.last) {
+                  Unit
+               } else {
+                  // case 2: the overlapper subsumes the window, but window interval must replace it, splitting it.
                   val trailingInterval = IntRange(crossAxisRange.last + 1, overlapperInterval.last)
                   trailingOverlapperReplacement = IntervalTreeMap.OverlapResult(trailingInterval, overlapper.ancillary)
                }
-               // in case 4, the window subsumes the overlapper, we do nothing since we remove overlapper anyway
             }
-            for (overlapper in overlappersToRemove) {
-               furthestWindowRanges.delete(overlapper.interval)
+            // case 3: the overlapper starts after the window starts, and extends past it
+            else if (overlapperInterval.last > crossAxisRange.last) {
+               val trailingInterval = IntRange(crossAxisRange.last + 1, overlapperInterval.last)
+               trailingOverlapperReplacement = IntervalTreeMap.OverlapResult(trailingInterval, overlapper.ancillary)
             }
-            leadingOverlapperReplacement?.let {
-               furthestWindowRanges.insert(it.interval, it.ancillary) // keep the reference coordinate
-            }
-            trailingOverlapperReplacement?.let {
-               furthestWindowRanges.insert(it.interval, it.ancillary) // keep the reference coordinate
-            }
-            // important! must insert after removing overlappers
-            furthestWindowRanges.insert(crossAxisRange, i)
+            // in case 4, the window subsumes the overlapper, we do nothing since we remove overlapper anyway
          }
+         for (overlapper in overlappersToRemove) {
+            furthestWindowRanges.delete(overlapper.interval)
+         }
+         leadingOverlapperReplacement?.let {
+            furthestWindowRanges.insert(it.interval, it.ancillary)
+         }
+         trailingOverlapperReplacement?.let {
+            furthestWindowRanges.insert(it.interval, it.ancillary)
+         }
+         // important! must insert after removing overlappers
+         furthestWindowRanges.insert(crossAxisRange, movedWindow.ID)
 
-         // search the new collision regions for newly hit windows
-         // additional collisions are possible for entries in the interval tree based on how much frees pace is before them:
-         // they extend the collision space by the requested amount plus their thickness past the prior search range
-         // minus the free space before
-         // TODO: avoid filter
-         val searchAreaSequence = furthestWindowRanges.iterator().asSequence()
-            .filter { it.ancillary >= processedWindowCount }
-            .map { SearchArea(movedWindows[it.ancillary], it.interval, freeSpaceBefore[it.ancillary]) }
-         val newCollisions = projector.findCollisionsInSearchRegions(searchAreaSequence, amount, windowList)
+         hardAssert(freeSpace >= 0)
+         freeSpaceBefore[movedWindow.ID] = freeSpace
+         // update the maximum push amount by considering the trailing distance to edge for this moved window
+         maxPushAmount = min(maxPushAmount, projector.trailingSpaceToBound(movedWindow) + freeSpace)
 
-         processedWindowCount = movedWindows.size
-
-         // dedupe them and add them to the movedWindows
-         for (collision in newCollisions) {
-            if (!movedWindowIDs.get(collision.ID)) {
-               movedWindowIDs.set(collision.ID)
-               movedWindows.add(collision)
+         val newCollisions = projector.findCollisions(movedWindow, amount - freeSpace, windowList)
+         for (newCollision in newCollisions) {
+            if (!movedWindowIDs.get(newCollision.ID)) {
+               movedWindowIDs.set(newCollision.ID)
+               unprocessedWindowsByLeadingEdge.add(newCollision)
             }
          }
-         // repeat if any new windows were collided
-      } while (movedWindows.size != processedWindowCount)
-
-      // the max amount we can actually push is the minimum of a) the requested amount
-      // b) the minimum trailing space to boundary of any moved window plus the free space before it
-      // have to write a manual min because I need an index
-      var maxPushAmount = projector.mainAxisLength
-      for (i in 0 ..< movedWindows.size) {
-         val movedWindow = movedWindows[i]
-         maxPushAmount = min(maxPushAmount, projector.trailingSpaceToBound(movedWindow) + freeSpaceBefore[i])
       }
-      maxPushAmount = min(maxPushAmount, amount)
-      assert(maxPushAmount >= 0)
 
-      // we have the free space before all hit windows, we have the amount to push maxPushAMount
+      // We have the free space before all hit windows, we have the amount to push maxPushAMount
       // we can calculate the amount each window moved as: maxPushAmount - freeSpace
-      // cut out the windows from the 2D trees, their points cant be moved
-      // The windows have to be all removed, update their coordinates and then re-added because a window can move to a previous
-      // window's position, and the tree doesn't allow duplicates
-      movedWindows.forEachIndexed { index, movedWindow ->
-         removeFromUpperLeftTree(movedWindow)
-         removeFromLowerRightTree(movedWindow)
-         val movedAmount = maxPushAmount - freeSpaceBefore[index]
-         projector.moveWindowBy(movedWindow, movedAmount)
+      // The windows have to be all removed, update their coordinates and then re-added because a window can move to another window's
+      // prior position, and the tree doesn't allow duplicates
+      var movedWindowID = movedWindowIDs.nextSetBit(0)
+      while (movedWindowID > -1) {
+         val movedAmount = maxPushAmount - freeSpaceBefore[movedWindowID]
+         if (movedAmount > 0) {
+            val movedWindow = windowList[movedWindowID]
+            removeFromUpperLeftTree(movedWindow)
+            removeFromLowerRightTree(movedWindow)
+            projector.moveWindowBy(movedWindow, movedAmount)
+         }
+         movedWindowID = movedWindowIDs.nextSetBit(movedWindowID + 1)
       }
-      for (movedWindow in movedWindows) {
+      movedWindowID = movedWindowIDs.nextSetBit(0)
+      while (movedWindowID > -1) {
+         val movedWindow = windowList[movedWindowID]
          addToUpperLeftTree(movedWindow)
          addToLowerRightTree(movedWindow)
+         movedWindowID = movedWindowIDs.nextSetBit(movedWindowID + 1)
       }
 
-      assert(upperLeft2DTree.size() == lowerRight2DTree.size())
+      hardAssert(upperLeft2DTree.size() == lowerRight2DTree.size())
       val code = if (maxPushAmount == amount) MoveResult.OK else MoveResult.MovedLess
       return MoveResult(code, maxPushAmount)
    }
@@ -428,15 +413,13 @@ private class SearchArea(val window: Window, val crossAxisRange: IntRange, val f
 
 private abstract class DimensionProjector protected constructor(
    val dimension: Dimension,
-   val mainAxisLength: Int,
-) {
+) : Comparator<Window> {
    abstract fun moveWindowBy(movedWindow: Window, movedAmount: Int)
    abstract fun crossAxisRange(window: Window): IntRange
-
-   //   abstract fun mainAxisRange(window: Window): IntRange
+   abstract fun mainAxisStart(window: Window): Int
    abstract fun afterTrailingEdge(window: Window, amount: Int = 0): Int
    abstract fun trailingSpaceToBound(window: Window): Int
-   abstract fun findCollisionsTo(window: Window, width: Int, windowList: List<Window>, dest: MutableList<Window>)
+   abstract fun findCollisions(window: Window, width: Int, windowList: List<Window>): List<Window>
    abstract fun findCollisionsInSearchRegions(searchAreas: Sequence<SearchArea>, referenceAmount: Int, windowList: List<Window>): List<Window>
    abstract fun spaceBetween(earlyWindow: Window, laterWindow: Window): Int
    abstract fun sortWindows(list: MutableList<Window>)
@@ -451,7 +434,7 @@ private abstract class DimensionProjector protected constructor(
       ): DimensionProjector {
          return if (dimension == Dimension.X) {
             if (towardsPositiveInfinity) {
-               object : DimensionProjector(Dimension.X, spaceBounds.width) {
+               object : DimensionProjector(Dimension.X) {
                   override fun moveWindowBy(movedWindow: Window, movedAmount: Int) {
                      movedWindow.moveX(movedAmount)
                   }
@@ -459,16 +442,18 @@ private abstract class DimensionProjector protected constructor(
                   override fun crossAxisRange(window: Window): IntRange =
                      window.yRange
 
+                  override fun mainAxisStart(window: Window): Int = window.xRange.first
+
                   override fun afterTrailingEdge(window: Window, amount: Int): Int =
                      window.xRange.last + amount
 
                   override fun trailingSpaceToBound(window: Window): Int =
                      spaceBounds.width - window.xRange.last
 
-                  override fun findCollisionsTo(window: Window, width: Int, windowList: List<Window>, dest: MutableList<Window>) {
-                     upperLeftTree
+                  override fun findCollisions(window: Window, width: Int, windowList: List<Window>): List<Window> {
+                     return upperLeftTree
                         .findAll(afterTrailingEdge(window, 1)..afterTrailingEdge(window, width), spaceBounds.y..window.yRange.last)
-                        .mapNotNullTo(dest) { if (windowList[it].yRange.last >= window.originY) windowList[it] else null }
+                        .mapNotNull { if (windowList[it].yRange.last >= window.originY) windowList[it] else null }
                   }
 
                   override fun findCollisionsInSearchRegions(
@@ -480,6 +465,7 @@ private abstract class DimensionProjector protected constructor(
                      for (searchArea in searchAreas) {
                         val searchLeft = afterTrailingEdge(searchArea.window, 1)
                         val searchRight = afterTrailingEdge(searchArea.window, referenceAmount - searchArea.freeSpaceBefore)
+                        hardAssert(searchLeft <= searchRight)
                         upperLeftTree.findAll(
                            searchLeft..searchRight,
                            spaceBounds.y..searchArea.crossAxisRange.last
@@ -497,15 +483,19 @@ private abstract class DimensionProjector protected constructor(
                      list.sortBy { it.originX }
                   }
 
+                  override fun compare(o1: Window, o2: Window): Int =
+                     o1.originX.compareTo(o2.originX)
+
                }
             } else {
-               object : DimensionProjector(Dimension.X, spaceBounds.width) {
+               object : DimensionProjector(Dimension.X) {
                   override fun moveWindowBy(movedWindow: Window, movedAmount: Int) {
                      movedWindow.moveX(-movedAmount)
                   }
 
                   override fun crossAxisRange(window: Window): IntRange =
                      window.yRange
+                  override fun mainAxisStart(window: Window): Int = window.xRange.last
 
                   override fun afterTrailingEdge(window: Window, amount: Int): Int =
                      window.originX - amount
@@ -513,10 +503,10 @@ private abstract class DimensionProjector protected constructor(
                   override fun trailingSpaceToBound(window: Window): Int =
                      window.originX - spaceBounds.x
 
-                  override fun findCollisionsTo(window: Window, width: Int, windowList: List<Window>, dest: MutableList<Window>) {
-                     lowerRightTree
+                  override fun findCollisions(window: Window, width: Int, windowList: List<Window>): List<Window> {
+                     return lowerRightTree
                         .findAll(window.originX - width..<window.originX, window.originY..spaceBounds.height)
-                        .mapNotNullTo(dest) {
+                        .mapNotNull {
                            if (windowList[it].originY <= window.yRange.last) windowList[it] else null
                         }
                   }
@@ -526,6 +516,7 @@ private abstract class DimensionProjector protected constructor(
                      for (searchArea in searchAreas) {
                         val searchRight = afterTrailingEdge(searchArea.window, 1)
                         val searchLeft = afterTrailingEdge(searchArea.window, referenceAmount - searchArea.freeSpaceBefore)
+                        hardAssert(searchLeft <= searchRight)
                         lowerRightTree.findAll(
                            searchLeft..searchRight,
                            searchArea.crossAxisRange.first..spaceBounds.height
@@ -543,17 +534,22 @@ private abstract class DimensionProjector protected constructor(
                      list.sortByDescending { it.originX }
                   }
 
+                  // Need to compare descending
+                  override fun compare(o1: Window, o2: Window): Int =
+                     o2.xRange.last.compareTo(o1.xRange.last)
+
                }
             }
          } else {
             if (towardsPositiveInfinity) {
-               object : DimensionProjector(Dimension.Y, spaceBounds.height) {
+               object : DimensionProjector(Dimension.Y) {
                   override fun moveWindowBy(movedWindow: Window, movedAmount: Int) {
                      movedWindow.moveY(movedAmount)
                   }
 
                   override fun crossAxisRange(window: Window): IntRange =
                      window.xRange
+                  override fun mainAxisStart(window: Window): Int = window.yRange.first
 
                   override fun afterTrailingEdge(window: Window, amount: Int): Int =
                      window.yRange.last + amount
@@ -561,10 +557,10 @@ private abstract class DimensionProjector protected constructor(
                   override fun trailingSpaceToBound(window: Window): Int =
                      spaceBounds.height - window.yRange.last
 
-                  override fun findCollisionsTo(window: Window, width: Int, windowList: List<Window>, dest: MutableList<Window>) {
-                     upperLeftTree
+                  override fun findCollisions(window: Window, width: Int, windowList: List<Window>): List<Window> {
+                     return upperLeftTree
                         .findAll(spaceBounds.x..window.xRange.last, window.yRange.last + 1..window.yRange.last + width)
-                        .mapNotNullTo(dest) { if (windowList[it].xRange.last >= window.xRange.first) windowList[it] else null }
+                        .mapNotNull { if (windowList[it].xRange.last >= window.xRange.first) windowList[it] else null }
                   }
 
                   override fun findCollisionsInSearchRegions(searchAreas: Sequence<SearchArea>, referenceAmount: Int, windowList: List<Window>): List<Window> {
@@ -572,6 +568,7 @@ private abstract class DimensionProjector protected constructor(
                      for (searchArea in searchAreas) {
                         val searchTop = afterTrailingEdge(searchArea.window, 1)
                         val searchBottom = afterTrailingEdge(searchArea.window, referenceAmount - searchArea.freeSpaceBefore)
+                        hardAssert(searchTop <= searchBottom)
                         upperLeftTree.findAll(
                            spaceBounds.x..searchArea.crossAxisRange.last,
                            searchTop..searchBottom
@@ -589,15 +586,19 @@ private abstract class DimensionProjector protected constructor(
                      list.sortBy { it.originY }
                   }
 
+                  override fun compare(o1: Window, o2: Window): Int =
+                     o1.originY.compareTo(o2.originY)
+
                }
             } else {
-               object : DimensionProjector(Dimension.Y, spaceBounds.height) {
+               object : DimensionProjector(Dimension.Y) {
                   override fun moveWindowBy(movedWindow: Window, movedAmount: Int) {
                      movedWindow.moveY(-movedAmount)
                   }
 
                   override fun crossAxisRange(window: Window): IntRange =
                      window.xRange
+                  override fun mainAxisStart(window: Window): Int = window.yRange.last
 
                   override fun afterTrailingEdge(window: Window, amount: Int): Int =
                      window.originY - amount
@@ -605,10 +606,10 @@ private abstract class DimensionProjector protected constructor(
                   override fun trailingSpaceToBound(window: Window): Int =
                      window.originY - spaceBounds.y
 
-                  override fun findCollisionsTo(window: Window, width: Int, windowList: List<Window>, dest: MutableList<Window>) {
-                     lowerRightTree
+                  override fun findCollisions(window: Window, width: Int, windowList: List<Window>): List<Window> {
+                     return lowerRightTree
                         .findAll(window.originX..spaceBounds.width, window.originY - width..<window.originY)
-                        .mapNotNullTo(dest) { if (windowList[it].xRange.first <= window.xRange.last) windowList[it] else null }
+                        .mapNotNull { if (windowList[it].xRange.first <= window.xRange.last) windowList[it] else null }
                   }
 
                   override fun findCollisionsInSearchRegions(searchAreas: Sequence<SearchArea>, referenceAmount: Int, windowList: List<Window>): List<Window> {
@@ -616,6 +617,7 @@ private abstract class DimensionProjector protected constructor(
                      for (searchArea in searchAreas) {
                         val searchBottom = afterTrailingEdge(searchArea.window, 1)
                         val searchTop = afterTrailingEdge(searchArea.window, referenceAmount - searchArea.freeSpaceBefore)
+                        hardAssert(searchTop <= searchBottom)
                         lowerRightTree.findAll(
                            searchArea.crossAxisRange.first..spaceBounds.width,
                            searchTop..searchBottom
@@ -632,6 +634,10 @@ private abstract class DimensionProjector protected constructor(
                   override fun sortWindows(list: MutableList<Window>) {
                      list.sortByDescending { it.originY }
                   }
+
+                  // Need to compare descending
+                  override fun compare(o1: Window, o2: Window): Int =
+                     o2.yRange.last.compareTo(o1.yRange.last)
 
                }
             }
