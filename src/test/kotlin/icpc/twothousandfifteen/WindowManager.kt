@@ -231,18 +231,18 @@ class WindowManagerTest {
       assertEquals(result.first, expectedOutput, "error messages")
       assertEquals(2, result.second, "window count")
 
-      val window1 = result.third.next()
-      assertEquals(90, window1.originX, "window 1 originX")
-      assertEquals(0, window1.originY, "window 1 originY")
+      val window1 = result.third[0]
+      assertEquals(90, window1.origin.x, "window 1 originX")
+      assertEquals(0, window1.origin.y, "window 1 originY")
       assertEquals(15, window1.width, "window 1 width")
       assertEquals(15, window1.height, "window 1 height")
 
-      val window2 = result.third.next()
-      assertEquals(115, window2.originX, "window 1 originX")
-      assertEquals(50, window2.originY, "window 1 originX")
+      val window2 = result.third[1]
+      assertEquals(115, window2.origin.x, "window 1 originX")
+      assertEquals(50, window2.origin.y, "window 1 originX")
       assertEquals(10, window2.width, "window 1 originX")
       assertEquals(10, window2.height, "window 1 originX")
-      assertFalse(result.third.hasNext())
+      assertEquals(2, result.third.size)
    }
 
    @Test fun testSample1IO() {
@@ -362,11 +362,8 @@ class WindowManagerTest {
          }
 
          assertEquals(windowRects.size, manager.windowCount, "window count")
-         var i = 0
-         val iter = manager.windowIterator()
-         while (iter.hasNext()) {
-            assertTrue(iter.next().equals(windowRects[i]), "final window rect")
-            i += 1
+         manager.windows().forEachIndexed { i, window ->
+            assertTrue(window.equals(windowRects[i]), "final window rect")
          }
 
       }
@@ -385,14 +382,14 @@ class WindowManagerTest {
       val result = manager.moveY(50, 8, 100)
       assertEquals(MoveResult.MovedLess, result.code)
       assertEquals(39, result.movedAmount)
-      val windows = manager.windowIterator().asSequence().toList()
-      assertEquals(62, windows[0].originY)
-      assertEquals(62, windows[1].originY)
-      assertEquals(52, windows[2].originY)
-      assertEquals(52, windows[3].originY)
-      assertEquals(67, windows[4].originY)
-      assertEquals(44, windows[5].originY)
-      assertEquals(60, windows[6].originY)
+      val windows = manager.windows()
+      assertEquals(62, windows[0].origin.y)
+      assertEquals(62, windows[1].origin.y)
+      assertEquals(52, windows[2].origin.y)
+      assertEquals(52, windows[3].origin.y)
+      assertEquals(67, windows[4].origin.y)
+      assertEquals(44, windows[5].origin.y)
+      assertEquals(60, windows[6].origin.y)
    }
 
    @Test fun testMoveABunchOfWindowsRight() {
@@ -408,14 +405,14 @@ class WindowManagerTest {
       val result = manager.moveX(8, 50, 100)
       assertEquals(MoveResult.MovedLess, result.code)
       assertEquals(39, result.movedAmount)
-      val windows = manager.windowIterator().asSequence().toList()
-      assertEquals(62, windows[0].originX)
-      assertEquals(62, windows[1].originX)
-      assertEquals(52, windows[2].originX)
-      assertEquals(52, windows[3].originX)
-      assertEquals(67, windows[4].originX)
-      assertEquals(44, windows[5].originX)
-      assertEquals(60, windows[6].originX)
+      val windows = manager.windows()
+      assertEquals(62, windows[0].origin.x)
+      assertEquals(62, windows[1].origin.x)
+      assertEquals(52, windows[2].origin.x)
+      assertEquals(52, windows[3].origin.x)
+      assertEquals(67, windows[4].origin.x)
+      assertEquals(44, windows[5].origin.x)
+      assertEquals(60, windows[6].origin.x)
    }
 
    @Test fun testMoveWithWindowHiddenInMiddle() {
@@ -427,11 +424,11 @@ class WindowManagerTest {
 
       val result = manager.moveX(85, 50, -100)
       assertEquals(28, result.movedAmount)
-      val windows = manager.windowIterator().asSequence().toList()
-      assertEquals(0, windows[0].originX)
-      assertEquals(52, windows[1].originX)
-      assertEquals(20, windows[2].originX)
-      assertEquals(42, windows[3].originX)
+      val windows = manager.windows()
+      assertEquals(0, windows[0].origin.x)
+      assertEquals(52, windows[1].origin.x)
+      assertEquals(20, windows[2].origin.x)
+      assertEquals(42, windows[3].origin.x)
    }
 
    @Test fun testMoveWithOneWindowInPathStuckButAnotherFree() {
@@ -441,20 +438,20 @@ class WindowManagerTest {
       manager.open(80, 0, 1, 80) // target
 
       val result = manager.moveX(80, 50, -20)
-      val windows = manager.windowIterator().asSequence().toList()
+      val windows = manager.windows()
       assertEquals(0, result.movedAmount)
-      assertEquals(0, windows[0].originX)
-      assertEquals(50, windows[1].originX)
-      assertEquals(80, windows[2].originX)
+      assertEquals(0, windows[0].origin.x)
+      assertEquals(50, windows[1].origin.x)
+      assertEquals(80, windows[2].origin.x)
 
       // move target right and try again
       manager.moveX(80, 50, 10)
 
       val result2 = manager.moveX(90, 50, -100)
       assertEquals(10, result2.movedAmount)
-      assertEquals(0, windows[0].originX)
-      assertEquals(50, windows[1].originX)
-      assertEquals(80, windows[2].originX)
+      assertEquals(0, windows[0].origin.x)
+      assertEquals(50, windows[1].origin.x)
+      assertEquals(80, windows[2].origin.x)
    }
 
    @Test fun testMoveWithWindowHiddenInMiddle2() {
@@ -467,8 +464,8 @@ class WindowManagerTest {
       manager.open(0, 75, 20, 5)
 
       val result = manager.moveY(0, 0, 40)
-      val windows = manager.windowIterator().asSequence().toList()
-      assertEquals(95, windows[3].originY)
+      val windows = manager.windows()
+      assertEquals(95, windows[3].origin.y)
    }
 
    @Test fun testBreak1() {

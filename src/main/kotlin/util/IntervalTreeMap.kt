@@ -392,6 +392,14 @@ class IntervalTreeMap<V> {
       return root?.let { TreeIterator(it) } ?: Collections.emptyIterator()
    }
 
+   /**
+    * Iterate from a minimum overlap on, using successor. Useful if you know that stored
+    * intervals don't overlap.
+    */
+   fun successorIterator(range: IntRange): MutableIterator<OverlapResult<V>> {
+      return root?.let { TreeIterator(it, range) } ?: Collections.emptyIterator()
+   }
+
    ///////////////////////////////
    // Tree -- Mutation methods //
    ///////////////////////////////
@@ -508,6 +516,10 @@ class IntervalTreeMap<V> {
     */
    fun delete(int: IntRange) {
       val node = search(int) ?: return
+      delete(node)
+   }
+
+   private fun delete(node: Node<V>) {
       val nodeOrSuccessor =
          if (node.leftChild == null || node.rightChild == null)
             node
@@ -706,37 +718,38 @@ class IntervalTreeMap<V> {
    /**
     * An Iterator which walks along this IntervalTree's Intervals in ascending
     * order.
-    *
-    * This class just wraps a TreeNodeIterator and extracts each Node's Interval.
     */
-   private class TreeIterator<V>(root: Node<V>) : Iterator<OverlapResult<V>> {
-      private val nodeIter = TreeNodeIterator(root)
+   private inner class TreeIterator : MutableIterator<OverlapResult<V>> {
+      private var next: Node<V>?
+      private var last: Node<V>? = null
 
-      override fun hasNext(): Boolean {
-         return nodeIter.hasNext()
+      constructor(root: Node<V>, ) {
+         next = root.minimumNode()
       }
 
-      override fun next(): OverlapResult<V> {
-         val node = nodeIter.next()
-         return OverlapResult(node.interval, node.ancillary)      }
-   }
-
-   private class TreeNodeIterator<V>(root: Node<V>) : Iterator<Node<V>> {
-      private var next: Node<V>?
-
-      init {
-         next = root.minimumNode()
+      constructor(root: Node<V>, startingInterval: IntRange) {
+         next = root.minimumOverlappingNode(startingInterval)
       }
 
       override fun hasNext(): Boolean {
          return next != null
       }
 
-      override fun next(): Node<V> {
-         val retval = next!!
-         next = retval.successor()
-         return retval
+      override fun next(): OverlapResult<V> {
+         val node = next!!
+         next = node.successor()
+         last = node
+         return OverlapResult(node.interval, node.ancillary)
       }
+
+      override fun remove() {
+         checkNotNull(last)
+         // deleted entries are replaced by their successors
+         if (last!!.leftChild != null && last!!.rightChild != null)
+            next = last
+         delete(last!!)
+      }
+
    }
 
 }
