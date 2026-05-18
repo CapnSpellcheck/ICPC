@@ -1,6 +1,7 @@
 package icpc.twothousandfifteen
 
 import util.IntervalTreeMap
+import util.hardAssert
 import util.intersects
 import java.awt.Point
 import java.awt.Rectangle
@@ -15,12 +16,6 @@ enum class Dimension { X, Y }
 /**
  * This file contains a solution of the ICPC problem: https://icpc.kattis.com/problems/windows
  */
-
-// Hard assertion, to get "Run-Time Error" result on kattis.com
-fun hardAssert(value: Boolean) {
-   if (!value)
-      throw AssertionError("assert failed")
-}
 
 class Window(val ID: Int, origin: Point, width: Int, height: Int) {
 

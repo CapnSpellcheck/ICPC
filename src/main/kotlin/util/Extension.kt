@@ -50,3 +50,9 @@ fun Random.nextString(length: Int): String {
    }
    return buffer.toString()
 }
+
+// Hard assertion, to get "Run-Time Error" result on kattis.com
+fun hardAssert(value: Boolean) {
+   if (!value)
+      throw AssertionError("assert failed")
+}
