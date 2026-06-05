@@ -28,6 +28,26 @@ class WordScanner(val text: String) {
       return word
    }
 
+   fun nextAlphanumeric(): String? {
+      val start = offset
+      while (offset < text.length && text[offset].isLetterOrDigit()) {
+         offset += 1
+      }
+      val word = if (offset > start) {
+         text.substring(start, offset)
+      } else {
+         null
+      }
+      lastPunctuation = if (offset > start && offset < text.length && !text[offset].isWhitespace()) {
+         offset += 1
+         text[offset - 1]
+      } else {
+         null
+      }
+      offset += 1
+      return word
+   }
+
    fun reset() {
       offset = 0
       lastPunctuation = null

@@ -52,7 +52,16 @@ fun Random.nextString(length: Int): String {
 }
 
 // Hard assertion, to get "Run-Time Error" result on kattis.com
-fun hardAssert(value: Boolean) {
+inline fun hardAssert(value: Boolean) {
    if (!value)
       throw AssertionError("assert failed")
+}
+
+public inline fun IntArray.indexBefore(predicate: (Int) -> Boolean, before: Int): Int {
+   for (index in before - 1 downTo 0) {
+      if (predicate(this[index])) {
+         return index
+      }
+   }
+   return -1
 }
