@@ -11,16 +11,15 @@ enum class Card(val type: Type) {
    ;
    enum class Type { PERSON, WEAPON, ROOM }
 
-   inline fun cardsOfType(type: Type): Array<Card> = when (type) {
-      Type.PERSON -> PersonCards
-      Type.WEAPON -> WeaponCards
-      Type.ROOM -> RoomCards
-   }
-
    companion object {
       val PersonCards = arrayOf(A, B, C, D, E, F)
       val WeaponCards = arrayOf(G, H, I, J, K, L)
       val RoomCards = arrayOf(M, N, O, P, Q, R, S, T, U)
+      inline fun cardsOfType(type: Type): Array<Card> = when (type) {
+         Type.PERSON -> PersonCards
+         Type.WEAPON -> WeaponCards
+         Type.ROOM -> RoomCards
+      }
    }
 }
 
@@ -46,7 +45,7 @@ class MyHand(cards: Array<Card>) : Hand() {
 class CompetitorHand(val numberOfCards: Int, val game: ClueGame) : Hand() {
    val cardsDoesntHave = EnumSet.noneOf(Card::class.java)
    val cardsHas = EnumSet.noneOf(Card::class.java)
-   val hasOneOf = mutableListOf<Suggestion>()
+   val hasOneOf = mutableListOf<EnumSet<Card>>()
    var couldntPresentForLastSuggestion = false; private set
 
    override fun couldntPresentForSuggestion(suggestion: Suggestion) {
@@ -61,18 +60,30 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame) : Hand() {
    }
 
    override fun presentedForSuggestion(suggestion: Suggestion) {
-      if (cardsHas.size == numberOfCards)
-         // there is nothing to learn
-         return
-      hasOneOf.add(suggestion)
       // deduce!
+      val hasOneOf_ = EnumSet.of(suggestion.first, suggestion.second, suggestion.third)
+      if (game.cardHolders[suggestion.first]?.let { it != this } == true)
+         hasOneOf_.remove(suggestion.first)
+      if (game.cardHolders[suggestion.second]?.let { it != this } == true)
+         hasOneOf_.remove(suggestion.second)
+      if (game.cardHolders[suggestion.third]?.let { it != this } == true)
+         hasOneOf_.remove(suggestion.third)
+      hardAssert(hasOneOf_.isNotEmpty())
 
+      if (hasOneOf_.size == 1) {
+         cardsHas.add(hasOneOf_.first())
+         game.identifiedHolder(hasOneOf_.first(), this)
+         if (cardsHas.size == numberOfCards) {
+            hasOneOf.clear()
+         }
+      } else if (cardsHas.size < numberOfCards)
+         hasOneOf.add(hasOneOf_)
    }
 
    override fun presentedForMySuggestion(card: Card) {
       cardsHas.add(card)
       // deduce!
-      game.cardHolders[card] = this
+
       hardAssert(cardsHas.size <= numberOfCards)
       // We know that we can kill the 'hasOneOf' list if we've identified their full hand
       if (cardsHas.size == numberOfCards) {
@@ -86,13 +97,34 @@ class ClueGame(myCards: Array<Card>) {
    val cardHolders = EnumMap<Card, Hand>(Card::class.java)
    val myHand = MyHand(myCards)
 
+   private var deducedPerson: Card? = null
+   private var deducedWeapon: Card? = null
+   private var deducedRoom: Card? = null
+
    init {
       for (card in myCards)
          cardHolders[card] = myHand
    }
 
+   // We might be able to deduce the missing card of the type whose holder was just identified
+   // if there is only one unaccounted for remaining.
    fun identifiedHolder(card: Card, hand: CompetitorHand) {
-//      TODO()
+      cardHolders[card] = hand
+      var unaccountedCard: Card? = null
+      var numberOfUnaccountedCards = 0
+      for (cardOfType in Card.cardsOfType(card.type)) {
+         if (cardHolders[cardOfType] == null) {
+            unaccountedCard = cardOfType
+            numberOfUnaccountedCards += 1
+         }
+      }
+      if (numberOfUnaccountedCards == 1) {
+         when (card.type) {
+            Card.Type.PERSON -> deducedPerson = unaccountedCard
+            Card.Type.WEAPON -> deducedWeapon = unaccountedCard
+            Card.Type.ROOM -> deducedRoom = unaccountedCard
+         }
+      }
    }
 
    fun deduce(examinations: Array<Examination>): Deduction {
@@ -101,9 +133,6 @@ class ClueGame(myCards: Array<Card>) {
       val player4 = CompetitorHand(4, this)
 
       var suggestingPlayer = STARTING_PLAYER
-      var deducedPerson: Card? = null
-      var deducedWeapon: Card? = null
-      var deducedRoom: Card? = null
 
       for (examination in examinations) {
          // check which competitor hands passed
@@ -172,7 +201,6 @@ class ClueGame(myCards: Array<Card>) {
          if (suggestingPlayer == NUMBER_OF_PLAYERS)
             suggestingPlayer = 1
       }
-
 
       return Deduction(deducedPerson, deducedWeapon, deducedRoom)
    }
