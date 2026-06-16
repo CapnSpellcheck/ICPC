@@ -2,8 +2,11 @@ package icpc.twothousandseventeen
 
 import util.StringOutputStream
 import java.io.StringBufferInputStream
+import java.util.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class ClueTest {
    @Test fun testSample1() {
@@ -11,6 +14,17 @@ class ClueTest {
       val exams = arrayOf(Examination(Suggestion(Card.A, Card.G, Card.M), 3))
       val deduction = game.deduce(exams)
       assertEquals(Deduction(Card.A, Card.G, Card.M), deduction)
+   }
+
+   @Test fun testSample1IO() {
+      val input = """
+         1
+         B I P C F
+         A G M - - -
+      """.trimIndent() + "\n"
+      val sos = StringOutputStream()
+      ClueGameIO(StringBufferInputStream(input), sos)
+      assertEquals("AGM", sos.toString())
    }
 
    @Test fun testSample2() {
@@ -79,5 +93,176 @@ class ClueTest {
       )
       val deduction = game.deduce(exams)
       assertEquals(Deduction(Card.F, null, null), deduction)
+   }
+
+   @Test fun testReductionFromSameHandByCouldntPresent() {
+      val game = ClueGame(arrayOf(Card.A, Card.B, Card.G, Card.M, Card.N))
+      val exams = arrayOf(
+         Examination(Suggestion(Card.C, Card.I, Card.R), 0, Card.C),
+         Examination(Suggestion(Card.E, Card.H, Card.M), 1),
+         Examination(Suggestion(Card.A, Card.H, Card.N), 1, Card.N),
+         Examination(Suggestion(Card.B, Card.G, Card.U), 0, Card.B),
+         Examination(Suggestion(Card.D, Card.G, Card.M), 1, Card.D),
+      )
+      val deduction = game.deduce(exams)
+      assertEquals(Deduction(Card.F, null, null), deduction)
+   }
+
+   @Test fun testWhenCompetitorHandIsDeducedThenAppliesCardsDoesntHave() {
+      val game = ClueGame(arrayOf(Card.A, Card.B, Card.G, Card.M, Card.N))
+      val exams = arrayOf(
+         Examination(Suggestion(Card.E, Card.L, Card.S), 2, Card.S),
+         Examination(Suggestion(Card.B, Card.K, Card.N), 1),
+         Examination(Suggestion(Card.E, Card.G, Card.M), 0),
+         Examination(Suggestion(Card.B, Card.J, Card.P), 0, Card.B),
+         Examination(Suggestion(Card.A, Card.G, Card.T), 2, Card.T),
+      )
+      val deduction = game.deduce(exams)
+      assertEquals(Deduction(null, Card.L, null), deduction)
+   }
+
+   @Test fun testReductionFromPositiveElimination() {
+      val game = ClueGame(arrayOf(Card.A, Card.B, Card.G, Card.M, Card.N))
+      val exams = arrayOf(
+         Examination(Suggestion(Card.A, Card.L, Card.T), 2, Card.T),
+         Examination(Suggestion(Card.D, Card.G, Card.N), 0),
+         Examination(Suggestion(Card.F, Card.G, Card.S), 0),
+         Examination(Suggestion(Card.A, Card.G, Card.M), 0, Card.G),
+         Examination(Suggestion(Card.C, Card.G, Card.N), 0, Card.C),
+         Examination(Suggestion(Card.C, Card.K, Card.M), 1),
+         Examination(Suggestion(Card.E, Card.G, Card.N), 0),
+         )
+      val deduction = game.deduce(exams)
+      assertEquals(Deduction(Card.F, Card.L, null), deduction)
+   }
+
+   @Test fun testPresentedForSuggestionWithCardsDoesntHave() {
+      val game = ClueGame(arrayOf(Card.A, Card.B, Card.G, Card.M, Card.N))
+      val exams = arrayOf(
+         Examination(Suggestion(Card.E, Card.K, Card.S), 2, Card.K),
+         Examination(Suggestion(Card.E, Card.I, Card.S), 0),
+         Examination(Suggestion(Card.A, Card.G, Card.M), 1, Card.M),
+         Examination(Suggestion(Card.D, Card.H, Card.R), 1),
+         Examination(Suggestion(Card.B, Card.J, Card.N), 1, Card.J),
+         Examination(Suggestion(Card.C, Card.J, Card.O), 0),
+         Examination(Suggestion(Card.E, Card.H, Card.M), 0),
+         Examination(Suggestion(Card.C, Card.G, Card.Q), 0, Card.G),
+         Examination(Suggestion(Card.D, Card.H, Card.R), 0, Card.H),
+         )
+      val deduction = game.deduce(exams)
+      assertEquals(Deduction(null, Card.L, null), deduction)
+   }
+
+   @Test fun testDoesCoverRequire() {
+      var groups = hashSetOf(
+         EnumSet.of(Card.A, Card.B),
+      )
+
+      assertFalse(doesCoverRequire(hashSetOf(), 1))
+      assertTrue(doesCoverRequire(groups, 1))
+
+      assertFalse(doesCoverRequire(groups, 2))
+      groups = hashSetOf(
+         EnumSet.of(Card.A, Card.B, Card.C),
+         EnumSet.of(Card.D, Card.E),
+         )
+      assertTrue(doesCoverRequire(groups, 2))
+      groups = hashSetOf(
+         EnumSet.of(Card.A, Card.B, Card.C),
+         EnumSet.of(Card.A, Card.D),
+         EnumSet.of(Card.B, Card.D),
+      )
+      assertTrue(doesCoverRequire(groups, 2))
+      assertFalse(doesCoverRequire(groups, 3))
+      groups = hashSetOf(
+         EnumSet.of(Card.A, Card.B, Card.C),
+         EnumSet.of(Card.D, Card.E),
+         EnumSet.of(Card.F, Card.G),
+      )
+      assertTrue(doesCoverRequire(groups, 3))
+      groups = hashSetOf(
+         EnumSet.of(Card.A, Card.B,),
+         EnumSet.of(Card.A, Card.C),
+         EnumSet.of(Card.D, Card.E),
+         EnumSet.of(Card.D, Card.Q),
+         EnumSet.of(Card.F, Card.G),
+         EnumSet.of(Card.F, Card.R),
+      )
+      assertTrue(doesCoverRequire(groups, 3))
+      assertFalse(doesCoverRequire(groups, 4))
+   }
+
+   @Test fun testDoesCoverExist() {
+      assertFalse(doesCoverExist(hashSetOf(EnumSet.of(Card.A)), 0))
+      assertTrue(doesCoverExist(hashSetOf(), 0))
+
+      assertTrue(doesCoverExist(hashSetOf(EnumSet.of(Card.A, Card.B), EnumSet.of(Card.B, Card.C)), 1))
+      assertTrue(doesCoverExist(hashSetOf(EnumSet.of(Card.A, Card.B), EnumSet.of(Card.B, Card.C)), 2))
+
+      assertFalse(doesCoverExist(hashSetOf(EnumSet.of(Card.A, Card.B), EnumSet.of(Card.D, Card.C)), 1))
+      assertTrue(doesCoverExist(hashSetOf(EnumSet.of(Card.A, Card.B), EnumSet.of(Card.D, Card.C)), 2))
+      assertTrue(doesCoverExist(hashSetOf(EnumSet.of(Card.A, Card.B), EnumSet.of(Card.D, Card.C)), 3))
+
+      assertFalse(doesCoverExist(hashSetOf(
+         EnumSet.of(Card.A, Card.B, Card.C),
+         EnumSet.of(Card.D, Card.E),
+         EnumSet.of(Card.F, Card.G),
+      ), 2))
+      assertTrue(doesCoverExist(hashSetOf(
+         EnumSet.of(Card.A, Card.B, Card.C),
+         EnumSet.of(Card.D, Card.E),
+         EnumSet.of(Card.F, Card.G),
+      ), 3))
+      assertTrue(doesCoverExist(hashSetOf(
+         EnumSet.of(Card.A, Card.B,),
+         EnumSet.of(Card.A, Card.C),
+         EnumSet.of(Card.D, Card.E),
+         EnumSet.of(Card.D, Card.Q),
+         EnumSet.of(Card.F, Card.G),
+         EnumSet.of(Card.F, Card.R),
+      ), 3))
+   }
+
+   @Test fun testIsolatedPigeonhole() {
+      // numberOfSlots = 1
+      val game = ClueGame(arrayOf(Card.A, Card.B, Card.G, Card.M, Card.N))
+      val exams = arrayOf(
+         Examination(Suggestion(Card.D, Card.I, Card.S), 1, Card.I),
+         Examination(Suggestion(Card.D, Card.H, Card.T), 0),
+         Examination(Suggestion(Card.E, Card.G, Card.M), 0),
+         Examination(Suggestion(Card.C, Card.I, Card.R), 1),
+         Examination(Suggestion(Card.C, Card.G, Card.U), 0, Card.C),
+         Examination(Suggestion(Card.D, Card.G, Card.O), 0),
+         Examination(Suggestion(Card.E, Card.K, Card.Q), 0),
+         Examination(Suggestion(Card.E, Card.G, Card.R), 0, Card.G),
+         Examination(Suggestion(Card.B, Card.L, Card.R), 1, Card.R),
+         Examination(Suggestion(Card.E, Card.J, Card.N), 0),
+
+         )
+      val deduction = game.deduce(exams)
+      assertEquals(Deduction(Card.F, null, null), deduction)
+
+      // numberOfSlots = 3
+      val game2 = ClueGame(arrayOf(Card.A, Card.B, Card.G, Card.M, Card.N))
+      val exams2 = arrayOf(
+         Examination(Suggestion(Card.C, Card.J, Card.U), 0, Card.C),
+         Examination(Suggestion(Card.D, Card.K, Card.P), 0,),
+         Examination(Suggestion(Card.E, Card.G, Card.M), 0,),
+         Examination(Suggestion(Card.A, Card.G, Card.N), 0, Card.A),
+         Examination(Suggestion(Card.E, Card.I, Card.U), 1, Card.I),
+         Examination(Suggestion(Card.A, Card.J, Card.T), 0,),
+         Examination(Suggestion(Card.B, Card.G, Card.P), 1, Card.B),
+         Examination(Suggestion(Card.E, Card.L, Card.R), 2,),
+         Examination(Suggestion(Card.B, Card.G, Card.N), 3),
+         Examination(Suggestion(Card.C, Card.J, Card.O), 0,),
+         Examination(Suggestion(Card.F, Card.K, Card.Q), 0,),
+         Examination(Suggestion(Card.F, Card.L, Card.N), 0, Card.N),
+         Examination(Suggestion(Card.B, Card.L, Card.R), 1, Card.R),
+         Examination(Suggestion(Card.D, Card.H, Card.S), 0,),
+
+
+         )
+      val deduction2 = game2.deduce(exams2)
+      assertEquals(Deduction(Card.F, null, null), deduction2)
    }
 }
