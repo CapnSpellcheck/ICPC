@@ -223,7 +223,7 @@ class ClueTest {
       ), 3))
    }
 
-   @Test fun testIsolatedPigeonhole() {
+   @Test fun testIsolatedPigeonhole1() {
       // numberOfSlots = 1
       val game = ClueGame(arrayOf(Card.A, Card.B, Card.G, Card.M, Card.N))
       val exams = arrayOf(
@@ -237,14 +237,15 @@ class ClueTest {
          Examination(Suggestion(Card.E, Card.G, Card.R), 0, Card.G),
          Examination(Suggestion(Card.B, Card.L, Card.R), 1, Card.R),
          Examination(Suggestion(Card.E, Card.J, Card.N), 0),
-
          )
       val deduction = game.deduce(exams)
       assertEquals(Deduction(Card.F, null, null), deduction)
+   }
 
+   @Test fun testIsolatedPigeonhole2() {
       // numberOfSlots = 3
-      val game2 = ClueGame(arrayOf(Card.A, Card.B, Card.G, Card.M, Card.N))
-      val exams2 = arrayOf(
+      val game = ClueGame(arrayOf(Card.A, Card.B, Card.G, Card.M, Card.N))
+      val exams = arrayOf(
          Examination(Suggestion(Card.C, Card.J, Card.U), 0, Card.C),
          Examination(Suggestion(Card.D, Card.K, Card.P), 0,),
          Examination(Suggestion(Card.E, Card.G, Card.M), 0,),
@@ -259,10 +260,42 @@ class ClueTest {
          Examination(Suggestion(Card.F, Card.L, Card.N), 0, Card.N),
          Examination(Suggestion(Card.B, Card.L, Card.R), 1, Card.R),
          Examination(Suggestion(Card.D, Card.H, Card.S), 0,),
+         )
+      val deduction = game.deduce(exams)
+      assertEquals(Deduction(Card.F, null, null), deduction)
+   }
+
+   @Test fun testNegativeIsolatedPigeonhole() {
+      val game = ClueGame(arrayOf(Card.A, Card.B, Card.G, Card.M, Card.N))
+      val exams = arrayOf(
+         Examination(Suggestion(Card.A, Card.L, Card.S), 2, Card.S),
+         Examination(Suggestion(Card.B, Card.G, Card.T), 1,),
+         Examination(Suggestion(Card.B, Card.K, Card.U), 0,),
+         Examination(Suggestion(Card.A, Card.H, Card.O), 0, Card.A),
+         Examination(Suggestion(Card.B, Card.H, Card.N), 0, Card.H),
+         Examination(Suggestion(Card.E, Card.L, Card.U), 1,),
+         Examination(Suggestion(Card.E, Card.K, Card.P), 0,),
+         Examination(Suggestion(Card.F, Card.L, Card.M), 0, Card.M),
+         Examination(Suggestion(Card.C, Card.H, Card.O), 0, Card.O),
+         Examination(Suggestion(Card.D, Card.I, Card.R), 0,),
+         Examination(Suggestion(Card.E, Card.I, Card.U), 0,),
+         )
+      val deduction = game.deduce(exams)
+      assertEquals(Deduction(null, Card.L, null), deduction)
+   }
+
+   @Test fun testTwoWayPigeonhole() {
+      val game = ClueGame(arrayOf(Card.A, Card.B, Card.G, Card.M, Card.N))
+      val exams = arrayOf(
+         Examination(Suggestion(Card.E, Card.G, Card.M), 2, Card.E),
+         Examination(Suggestion(Card.C, Card.I, Card.N), 0,),
+         Examination(Suggestion(Card.A, Card.G, Card.M), 1,Card.G),
+         Examination(Suggestion(Card.C, Card.I, Card.M), 1,),
+         Examination(Suggestion(Card.D, Card.L, Card.N), 1, Card.D),
 
 
          )
-      val deduction2 = game2.deduce(exams2)
-      assertEquals(Deduction(Card.F, null, null), deduction2)
+      val deduction = game.deduce(exams)
+      assertEquals(Deduction(Card.F, null, null), deduction)
    }
 }

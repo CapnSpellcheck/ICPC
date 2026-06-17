@@ -26,10 +26,44 @@ enum class Card(val type: Type) {
    }
 }
 
+enum class SlotConstraint {
+   ANY,
+   PERSON_OR_WEAPON, PERSON_OR_ROOM, ROOM_OR_WEAPON,
+   PERSON, WEAPON, ROOM
+   ;
+   fun remove(type: Card.Type): SlotConstraint {
+      return when (type) {
+         Card.Type.PERSON ->
+            when (this) {
+               ANY -> ROOM_OR_WEAPON
+               PERSON_OR_WEAPON -> WEAPON
+               PERSON_OR_ROOM -> ROOM
+               ROOM_OR_WEAPON -> throw IllegalArgumentException("Cannot remove type $type from $this")
+               else -> throw IllegalArgumentException("Cannot remove type $type from $this, it would be empty")
+            }
+         Card.Type.WEAPON ->
+            when (this) {
+               ANY -> PERSON_OR_ROOM
+               PERSON_OR_WEAPON -> PERSON
+               PERSON_OR_ROOM -> throw IllegalArgumentException("Cannot remove type $type from $this")
+               ROOM_OR_WEAPON -> ROOM
+               else -> throw IllegalArgumentException("Cannot remove type $type from $this, it would be empty")
+            }
+         Card.Type.ROOM ->
+            when (this) {
+               ANY -> PERSON_OR_WEAPON
+               PERSON_OR_WEAPON -> throw IllegalArgumentException("Cannot remove type $type from $this")
+               PERSON_OR_ROOM -> PERSON
+               ROOM_OR_WEAPON -> WEAPON
+               else -> throw IllegalArgumentException("Cannot remove type $type from $this, it would be empty")
+            }
+      }
+   }
+}
+
 typealias Suggestion = Triple<Card, Card, Card>
 typealias Deduction = Triple<Card?, Card?, Card?>
 
-const val NO_PLAYER_PRESENTED: Short = 3
 const val STARTING_PLAYER: Short = 1
 const val NUMBER_OF_PLAYERS: Short = 4
 
@@ -57,6 +91,9 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
    private inline val isDeduced: Boolean
       get() = cardsHas.size == numberOfCards
 
+   val hasOneGroups: List<EnumSet<Card>>
+      get() = hasOneOf
+
    override fun couldntPresentForSuggestion(suggestion: Suggestion) {
       cardsDoesntHave.add(suggestion.first)
       cardsDoesntHave.add(suggestion.second)
@@ -79,7 +116,7 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
          hasOneOf_.remove(suggestion.third)
       hardAssert(hasOneOf_.isNotEmpty())
 
-      println("presentedForSuggestion: hand $this, hasOneOf_ = $hasOneOf_")
+      // println("presentedForSuggestion: hand $this, hasOneOf_ = $hasOneOf_")
       if (hasOneOf_.size == 1) {
          holding(hasOneOf_.first())
       } else if (!isDeduced) {
@@ -121,8 +158,8 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
    fun isolatedPigeonhole(): Boolean {
       val numberOfSlots = numberOfCards - cardsHas.size
       val hasOfSet = hasOneOf.toHashSet()
-      val emptySet = EnumSet.noneOf(Card::class.java)
-      hasOfSet.remove(emptySet)
+      hasOfSet.remove(EMPTY_CARD_SET)
+
       if (hasOfSet.size > numberOfSlots) {
          val groupOccurrences = EnumMap<Card, Int>(Card::class.java)
          var maxOccurrences = 0
@@ -133,23 +170,23 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
                maxOccurrences = max(maxOccurrences, occurrences)
             }
          }
-         println("isolatedPigeonhole: player $playerNo: maxOccurences = $maxOccurrences")
+          println("isolatedPigeonhole: player $playerNo: maxOccurences = $maxOccurrences")
          if (maxOccurrences < 2)
             return false
 
          for (entry in groupOccurrences.entries.filter { it.value == maxOccurrences }) {
             // remove groups containing this card, and check the cover size must be = numberOfSlots - 1
             val card = entry.key
-            println("isolatedPigeonhole: Trying $card")
+             println("isolatedPigeonhole: Trying $card")
             val groupsWithoutCard = hasOfSet.filter { !it.contains(card) }
             if (doesCoverRequire(groupsWithoutCard.toHashSet(), numberOfSlots - 1)) {
                // now check whether it is possible to fill the unidentified slots without card instead
                // copy the hasOfSet and remove card from all groups
-               println("isolatedPigeonhole: doesCoverRequire = true")
+                println("isolatedPigeonhole: doesCoverRequire = true")
                val groupsWithCardRemoved = hasOfSet.map { it.clone().apply { remove(card) } }.toHashSet()
-               groupsWithCardRemoved.remove(emptySet)
+               groupsWithCardRemoved.remove(EMPTY_CARD_SET)
                if (!doesCoverExist(groupsWithCardRemoved, numberOfSlots)) {
-                  println("isolatedPigeonhole identified")
+                   println("isolatedPigeonhole identified")
                   holding(card)
                   return true
                }
@@ -158,6 +195,55 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
       }
 
       return false
+   }
+
+   fun negativeIsolatedPigeonhole(cardHolders: Map<Card, Hand>) {
+      val numberOfSlots = numberOfCards - cardsHas.size
+      val hasOfSet = hasOneOf.toHashSet()
+      hasOfSet.remove(EMPTY_CARD_SET)
+
+      if (doesCoverRequire(hasOfSet, numberOfSlots)) {
+          println("negativeIsolatedPigeonhole: player $playerNo: cover requires all slots")
+         // add all cards not owned and not in hasOneOf's to cardsDoesntHave
+         val flatHasOfSet = EnumSet.noneOf(Card::class.java)
+         for (hasOf in hasOfSet) {
+            flatHasOfSet.addAll(hasOf)
+         }
+         for (card in Card.entries) {
+            if (cardHolders[card] == null && !flatHasOfSet.contains(card)) {
+                println("negativeIsolatedPigeonhole doesn't have $card")
+               cardsDoesntHave.add(card)
+            }
+         }
+
+         val newDoesntHave = EnumSet.noneOf(Card::class.java)
+         val triedCards = EnumSet.noneOf(Card::class.java)
+         for (group in hasOfSet) {
+            if (group.size > 2) {
+               for (card in group) {
+                  // try this card
+                  if (triedCards.contains(card))
+                     continue
+                  triedCards.add(card)
+                  val groupsWithoutCard = hasOfSet.filter { !it.contains(card) }
+                  if (!doesCoverExist(groupsWithoutCard.toHashSet(), numberOfSlots - 1)) {
+                      println("negativeIsolatedPigeonhole doesn't have $card [2]")
+                     newDoesntHave.add(card)
+                     cardsDoesntHave.add(card)
+                  }
+               }
+            }
+         }
+         if (newDoesntHave.isNotEmpty()) {
+            for (group in hasOneOf) {
+               group.removeAll(newDoesntHave)
+            }
+         }
+
+         // we've done work pigeonholing, so might as well write it back to `hasOneOf`
+         hasOneOf.clear()
+         hasOneOf.addAll(hasOfSet)
+      }
    }
 
    fun doesntHave(card: Card): Boolean {
@@ -182,7 +268,13 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
       return "CompetitorHand(playerNo=$playerNo)"
    }
 
+   companion object {
+      val EMPTY_CARD_SET = EnumSet.noneOf(Card::class.java)
+   }
+
 }
+
+class MultiCompetitorHand : Hand()
 
 class ClueGame(myCards: Array<Card>) {
    private val cardHolders = EnumMap<Card, Hand>(Card::class.java)
@@ -193,6 +285,7 @@ class ClueGame(myCards: Array<Card>) {
    private var deducedPerson: Card? = null
    private var deducedWeapon: Card? = null
    private var deducedRoom: Card? = null
+   private var multiHand = MultiCompetitorHand()
 
    init {
       for (card in myCards)
@@ -202,7 +295,7 @@ class ClueGame(myCards: Array<Card>) {
    // We might be able to deduce the missing card of the type whose holder was just identified
    // if there is only one unaccounted for remaining.
    fun identifiedHolder(card: Card, hand: CompetitorHand) {
-      println("Identified holder $card = $hand")
+      // println("Identified holder $card = $hand")
       cardHolders[card] = hand
       if (hand != player2)
          player2.reduce(card)
@@ -216,7 +309,7 @@ class ClueGame(myCards: Array<Card>) {
       var suggestingPlayer = STARTING_PLAYER
 
       for (examination in examinations) {
-         println("examination $examination")
+         // println("examination $examination")
          // check which competitor hands passed
          var examinee = suggestingPlayer + 1
          repeat(examination.numberOfPasses + 0) {
@@ -273,8 +366,49 @@ class ClueGame(myCards: Array<Card>) {
       while (player4.isolatedPigeonhole())
          Unit
 
-      // analyze multi-player pigeonholing. This involves knowledge about how many cards of each type are left
-      // with unknown holders, together with their hasOneOf groups.
+      // negative pigeonholing
+      player2.negativeIsolatedPigeonhole(cardHolders)
+      player3.negativeIsolatedPigeonhole(cardHolders)
+      player4.negativeIsolatedPigeonhole(cardHolders)
+
+      // analyze multi-player pigeonholing.
+      twoWayPigeonhole(player2, player3, player4)
+      twoWayPigeonhole(player3, player4, player2)
+      twoWayPigeonhole(player4, player2, player3)
+      threeWayPigeonhole()
+   }
+
+   private fun twoWayPigeonhole(hand1: CompetitorHand, hand2: CompetitorHand, otherHand: CompetitorHand) {
+      for (group in hand1.hasOneGroups) {
+         if (group.size == 2 && hand2.hasOneGroups.contains(group)) {
+            println("twoWayPigeonhole: ${hand1.playerNo} + ${hand2.playerNo} - $group")
+            for (card in group) {
+               cardHolders[card] = multiHand
+               otherHand.reduce(card)
+            }
+         }
+      }
+   }
+
+   private fun threeWayPigeonhole() {
+      // For a 3-way hole, all players must have a group containing the same 3 cards. Some groups may have 2 of the cards.
+      outer@ for (group2 in player2.hasOneGroups) {
+         for (group3 in player3.hasOneGroups) {
+            val merge = group2 + group3
+            if (merge.size <= 3) {
+               for (group4 in player4.hasOneGroups) {
+                  val merge = merge + group4
+                  if (merge.size <= 3) {
+                     println("threeWayPigeonhole: $merge")
+                     for (card in merge) {
+                        cardHolders[card] = multiHand
+                     }
+                     continue@outer
+                  }
+               }
+            }
+         }
+      }
    }
 
    private fun positiveElimination(): Boolean {
@@ -300,7 +434,7 @@ class ClueGame(myCards: Array<Card>) {
          }
       }
       if (numberOfUnaccountedCards == 1) {
-         println("positiveElimination $type $unaccountedCard")
+         // println("positiveElimination $type $unaccountedCard")
          when (type) {
             Card.Type.PERSON -> deducedPerson = unaccountedCard
             Card.Type.WEAPON -> deducedWeapon = unaccountedCard
@@ -345,7 +479,7 @@ class ClueGame(myCards: Array<Card>) {
                player4.doesntHave(card) &&
                !myHand.cardsHas.contains(card)
             ) {
-               println("negativeElimination deducedPerson=$card")
+               // println("negativeElimination deducedPerson=$card")
                deducedPerson = card
             }
          Card.Type.WEAPON ->
@@ -355,7 +489,7 @@ class ClueGame(myCards: Array<Card>) {
                player4.doesntHave(card) &&
                !myHand.cardsHas.contains(card)
             ) {
-               println("negativeElimination deducedWeapon=$card")
+               // println("negativeElimination deducedWeapon=$card")
                deducedWeapon = card
             }
          Card.Type.ROOM ->
@@ -365,7 +499,7 @@ class ClueGame(myCards: Array<Card>) {
                player4.doesntHave(card) &&
                !myHand.cardsHas.contains(card)
             ) {
-               println("negativeElimination deducedRoom=$card")
+               // println("negativeElimination deducedRoom=$card")
                deducedRoom = card
             }
       }
@@ -393,8 +527,8 @@ fun doesCoverRequire(groups: HashSet<EnumSet<Card>>, coverSize: Int): Boolean {
 }
 
 fun doesCoverExist(groups: HashSet<EnumSet<Card>>, maxCoverSize: Int): Boolean {
-   if (groups.isEmpty())
-      return maxCoverSize >= 0
+   if (maxCoverSize < 0)
+      return false
    val triedCards = EnumSet.noneOf(Card::class.java)
    for (group in groups) {
       for (card in group) {
@@ -408,7 +542,7 @@ fun doesCoverExist(groups: HashSet<EnumSet<Card>>, maxCoverSize: Int): Boolean {
             return true
       }
    }
-   return false
+   return groups.isEmpty()
 }
 
 
