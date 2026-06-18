@@ -292,10 +292,30 @@ class ClueTest {
          Examination(Suggestion(Card.A, Card.G, Card.M), 1,Card.G),
          Examination(Suggestion(Card.C, Card.I, Card.M), 1,),
          Examination(Suggestion(Card.D, Card.L, Card.N), 1, Card.D),
-
-
          )
       val deduction = game.deduce(exams)
       assertEquals(Deduction(Card.F, null, null), deduction)
+   }
+
+   @Test fun testAllPlayerTypedPigeonholing() {
+      val game = ClueGame(arrayOf(Card.A, Card.B, Card.G, Card.M, Card.N))
+      val exams = arrayOf(
+         Examination(Suggestion(Card.C, Card.G, Card.N), 0, Card.C),
+         Examination(Suggestion(Card.A, Card.I, Card.M), 0),
+         Examination(Suggestion(Card.B, Card.I, Card.S), 0),
+         Examination(Suggestion(Card.F, Card.L, Card.M), 0, Card.M),
+         Examination(Suggestion(Card.D, Card.J, Card.U), 1, Card.J),
+         Examination(Suggestion(Card.A, Card.L, Card.R), 0),
+         Examination(Suggestion(Card.E, Card.H, Card.U), 0),
+         Examination(Suggestion(Card.B, Card.I, Card.P), 0, Card.B),
+         Examination(Suggestion(Card.E, Card.I, Card.M), 1, Card.I),
+         Examination(Suggestion(Card.D, Card.K, Card.O), 0),
+         Examination(Suggestion(Card.D, Card.K, Card.N), 0),
+         Examination(Suggestion(Card.A, Card.L, Card.S), 0, Card.A),
+         Examination(Suggestion(Card.F, Card.I, Card.M), 1, Card.I),
+         Examination(Suggestion(Card.C, Card.G, Card.T), 1,),
+         )
+      val deduction = game.deduce(exams)
+      assertEquals(Deduction(Card.F, null, Card.U), deduction)
    }
 }
