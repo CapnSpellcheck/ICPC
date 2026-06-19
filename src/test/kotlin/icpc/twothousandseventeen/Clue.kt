@@ -7,6 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.random.Random
 
 class ClueTest {
    @Test fun testSample1() {
@@ -317,5 +318,68 @@ class ClueTest {
          )
       val deduction = game.deduce(exams)
       assertEquals(Deduction(Card.F, null, Card.U), deduction)
+   }
+
+   @Test fun testRuntimeException() {
+      fun match(s: Suggestion, cards: List<Card>): Card? {
+         val matches = mutableListOf<Card>()
+         for (card in listOf(s.first, s.second, s.third)) {
+            if (cards.contains(card))
+               matches.add(card)
+         }
+         return matches.randomOrNull()
+      }
+      while (true) {
+         // remove a card of each type
+         val heldPersons = Card.cardsOfType(Card.Type.PERSON).toMutableSet()
+         heldPersons.remove(heldPersons.random())
+         val heldWeapons = Card.cardsOfType(Card.Type.WEAPON).toMutableSet()
+         heldWeapons.remove(heldWeapons.random())
+         val heldRooms = Card.cardsOfType(Card.Type.ROOM).toMutableSet()
+         heldRooms.remove(heldRooms.random())
+
+         val cardSet = mutableSetOf<Card>()
+         cardSet.addAll(heldPersons)
+         cardSet.addAll(heldWeapons)
+         cardSet.addAll(heldRooms)
+
+         val player1 = (1 .. 5).map { val card = cardSet.random(); cardSet.remove(card); card }
+         val player2 = (1 .. 5).map { val card = cardSet.random(); cardSet.remove(card); card }
+         val player3 = (1 .. 4).map { val card = cardSet.random(); cardSet.remove(card); card }
+         val player4 = (1 .. 4).map { val card = cardSet.random(); cardSet.remove(card); card }
+         val allPlayers = listOf(player1, player2, player3, player4)
+
+         val examinations = mutableListOf<Examination>()
+         var currentPlayer = 0 // 0 based
+         // create between 1 and 50 suggestions
+         repeat(Random.nextInt(1, 51)) {
+            val person = Card.cardsOfType(Card.Type.PERSON).random()
+            val weapon = Card.cardsOfType(Card.Type.WEAPON).random()
+            val room = Card.cardsOfType(Card.Type.ROOM).random()
+            val suggestion = Suggestion(person, weapon, room)
+            var passes: Short = 0
+            var responder = (currentPlayer + 1) % 4
+            var answer = match(suggestion, allPlayers[responder])
+            if (answer == null) {
+               passes = 1
+               responder = (responder + 1) % 4
+               answer = match(suggestion, allPlayers[responder])
+               if (answer == null) {
+                  passes = 2
+                  responder = (responder + 1) % 4
+                  answer = match(suggestion, allPlayers[responder])
+                  if (answer == null)
+                     passes = 3
+               }
+            }
+            examinations.add(Examination(suggestion, passes, if (currentPlayer == 0 || responder == 0) answer else null))
+            currentPlayer = (currentPlayer + 1) % 4
+         }
+
+         // test it
+         val game = ClueGame(player1.toTypedArray())
+         game.deduce(examinations.toTypedArray())
+
+      }
    }
 }
