@@ -15,7 +15,7 @@ import java.io.OutputStream
  * perfectly.
  */
 
-const val DEBUG = false
+private const val DEBUG = false
 fun printDebug(cs: CharSequence) {
    if (DEBUG) {
       println(cs)
@@ -88,31 +88,6 @@ fun TimeDisplayAssessment?.serialize(outputStream: OutputStream) {
       this.serialize(outputStream)
 }
 
-fun main() {
-   assessTimeDisplayIO(System.`in`, System.out)
-}
-
-fun assessTimeDisplayIO(inStream: InputStream, outStream: OutputStream) {
-   val bufferedIn = inStream.bufferedReader(Charsets.US_ASCII)
-   val observationCount: Int = bufferedIn.readLine().toInt()
-   val observations = ArrayList<TimeDisplayObservation>(observationCount)
-   repeat(observationCount) {
-      val newObservation = TimeDisplayObservation.parse(listOf(
-         bufferedIn.readLine(),
-         bufferedIn.readLine(),
-         bufferedIn.readLine(),
-         bufferedIn.readLine(),
-         bufferedIn.readLine(),
-         bufferedIn.readLine(),
-         bufferedIn.readLine(),
-      ))
-      observations.add(newObservation)
-      bufferedIn.readLine()
-   }
-   val assessment = assessTimeDisplay(observations)
-   assessment.serialize(outStream)
-}
-
 /**
  * The core problem solution.
  */
@@ -153,6 +128,31 @@ fun assessTimeDisplay(displayObservations: List<TimeDisplayObservation>): TimeDi
       upperColonCondition,
       lowerColonCondition
    )
+}
+
+fun assessTimeDisplayIO(inStream: InputStream, outStream: OutputStream) {
+   val bufferedIn = inStream.bufferedReader(Charsets.US_ASCII)
+   val observationCount: Int = bufferedIn.readLine().toInt()
+   val observations = ArrayList<TimeDisplayObservation>(observationCount)
+   repeat(observationCount) {
+      val newObservation = TimeDisplayObservation.parse(listOf(
+         bufferedIn.readLine(),
+         bufferedIn.readLine(),
+         bufferedIn.readLine(),
+         bufferedIn.readLine(),
+         bufferedIn.readLine(),
+         bufferedIn.readLine(),
+         bufferedIn.readLine(),
+      ))
+      observations.add(newObservation)
+      bufferedIn.readLine()
+   }
+   val assessment = assessTimeDisplay(observations)
+   assessment.serialize(outStream)
+}
+
+fun main() {
+   assessTimeDisplayIO(System.`in`, System.out)
 }
 
 private fun assessWorkingOrBurned(digit: TimeDigit, observations: List<TimeDisplayObservation>): DigitCondition {

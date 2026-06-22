@@ -1,5 +1,6 @@
 package util
 
+import java.util.*
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.random.Random
@@ -64,4 +65,10 @@ public inline fun IntArray.indexBefore(predicate: (Int) -> Boolean, before: Int)
       }
    }
    return -1
+}
+
+fun <E : Enum<E>> EnumSet<E>.union(other: EnumSet<E>): EnumSet<E> {
+   val copy = EnumSet.copyOf(this)
+   copy.addAll(other)
+   return copy
 }

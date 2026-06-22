@@ -6,7 +6,7 @@ import java.io.OutputStream
 import java.lang.StringBuilder
 
 /**
- * This file contains a solution of the ICPC problem: https://icpc.kattis.com/problems/
+ * This file contains a solution of the ICPC problem: https://icpc.kattis.com/problems/ceiling
  * See also `NumberScanner` in util.
  */
 class BinaryTree(rootValue: Int) {
