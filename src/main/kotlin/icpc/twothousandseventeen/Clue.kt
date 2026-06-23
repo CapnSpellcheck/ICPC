@@ -18,6 +18,11 @@ fun printDebug(cs: CharSequence) {
    }
 }
 
+/**
+ * A card in Clue. Players can have any subset of them, so they are in a single class. The `type` property
+ * indicates its type.
+ * @property type Whether this card is considered a person, weapon, or room
+ */
 enum class Card(val type: Type) {
    A(Type.PERSON), B(Type.PERSON), C(Type.PERSON), D(Type.PERSON), E(Type.PERSON), F(Type.PERSON),
    G(Type.WEAPON), H(Type.WEAPON), I(Type.WEAPON), J(Type.WEAPON), K(Type.WEAPON), L(Type.WEAPON),
@@ -45,29 +50,52 @@ enum class Card(val type: Type) {
    }
 }
 
+// A Suggestion holds 3 cards. A not-enforced prerequisite is s.first.type == PERSON && s.second.type == WEAPON &&
+// s.third.type == ROOM.
 typealias Suggestion = Triple<Card, Card, Card>
+// The deduced state of the envelope contents.
 typealias Deduction = Triple<Card?, Card?, Card?>
 
+/**
+ * What happens during a single player's turn
+ * @property suggestion The cards that the player suggests, one of each type
+ * @property numberOfPasses The number of consecutive players that couldn't answer a suggestion
+ * @property presentedCard The card that player 1 either revealed or was revealed to.
+ */
 class Examination(val suggestion: Suggestion, val numberOfPasses: Short, val presentedCard: Card? = null) {
    override fun toString(): String {
       return "Examination(suggestion=$suggestion, numberOfPasses=$numberOfPasses, presentedCard=$presentedCard)"
    }
 }
 
-abstract class Hand {
-   open fun couldntPresentForSuggestion(suggestion: Suggestion) {}
-   open fun presentedForSuggestion(suggestion: Suggestion, cardHolders: Map<Card, Hand>) {}
-   open fun holding(card: Card) {}
-}
+/**
+ * A player's hand, any kind at all! A hand could be my hand, your hand, or a hand of 2 or 3 opponents.
+ */
+abstract class Hand {}
 
+/**
+ * My hand. I know what cards I hold, so it doesn't change during the course of the game deduction; no analysis is
+ * performed on it.
+ */
 class MyHand(cards: Array<Card>) : Hand() {
    val cardsHas = EnumSet.of(cards[0], cards[1], cards[2], cards[3], cards[4])
 }
 
+/**
+ * The hand of a single competitor.
+ * @property numberOfCards The number of cards in his hand. According to the problem statement, there are always
+ *   4 players, and all players know the number of cards in each player's hand.
+ * @property game The game being analyzed. I use it for callbacks; it could be satisfied by an interface instead.
+ * @property playerNo A number between 2 and 4, used to display in debugging logs.
+ */
 class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: Int) : Hand() {
+   // The cards we have proven the player holds
    private val cardsHas = EnumSet.noneOf(Card::class.java)
+   // Sets of cards which deduction can only prove the player is holding at least one of, typically a subset of a Suggestion
    private var hasOneOfSet = hashSetOf<EnumSet<Card>>()
+   // Cards that deduction can prove the player doesn't have
    private val cardsDoesntHave = EnumSet.noneOf(Card::class.java)
+   // Number of cards that the player must have, but we don't know exactly which one he holds
    private var cardsReservedForMultiHand = 0
 
    val isDeduced: Boolean
@@ -76,10 +104,20 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
    val hasOneGroups: Collection<EnumSet<Card>>
       get() = hasOneOfSet
 
+   // Number of slots is the number of cards in the player's hand that are not determined. By consequence of analysis methods,
+   // cards that are known to be in the multi hand do not count as slots.
    val numberOfSlots: Int
       get() = numberOfCards - cardsHas.size - cardsReservedForMultiHand
 
-   override fun couldntPresentForSuggestion(suggestion: Suggestion) {
+   val knownCards: Int  // used simply for debugging
+      get() = cardsHas.size
+
+   /**
+    * This must be called each time a turn is made, and some player doesn't answer the suggestion. What happens is that we
+    * know this hand doesn't hold any of the suggested cards.
+    * @param suggestion The 3 cards that the suggester suggested
+    */
+   fun couldntPresentForSuggestion(suggestion: Suggestion) {
       cardsDoesntHave.add(suggestion.first)
       cardsDoesntHave.add(suggestion.second)
       cardsDoesntHave.add(suggestion.third)
@@ -89,10 +127,13 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
       reduce(suggestion.third)
    }
 
-   val knownCards: Int
-      get() = cardsHas.size
-
-   override fun presentedForSuggestion(suggestion: Suggestion, cardHolders: Map<Card, Hand>) {
+   /**
+    * This must be called each time a turn is made, and some player answers a suggestion. The answer card was not shown to me.
+    * @param suggestion The 3 cards that the suggester suggested
+    * @param cardHolders This unfortunately is passed in to determine if each card in the suggestion is known the holder.
+    *   An improvement would be to pass in the holder status of the 3 cards.
+    */
+   fun presentedForSuggestion(suggestion: Suggestion, cardHolders: Map<Card, Hand>) {
       // if the hand already holds one of the cards, the suggestion is useless
       if (cardsHas.contains(suggestion.first) || cardsHas.contains(suggestion.second) || cardsHas.contains(suggestion.third)) {
          printDebug("presentedForSuggestion: player $playerNo: suggestion useless")
@@ -107,8 +148,9 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
       if (cardHolders[suggestion.third] != null || cardsDoesntHave.contains(suggestion.third))
          hasOneOf.remove(suggestion.third)
       hardAssert(hasOneOf.isNotEmpty())
-
       printDebug("presentedForSuggestion: hand $this, hasOneOf_ = $hasOneOf")
+
+      // If there is only one possible card, I know this player holds it; otherwise, add this set to the sets of cards.
       if (hasOneOf.size == 1) {
          holding(hasOneOf.first())
       } else if (!isDeduced) {
@@ -119,11 +161,12 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
    /**
     * Remove a specific card from `hasOneOf` groups. For each group that turns into a singleton, we can conclude
     * this hand is the holder of the remaining element.
+    * @param card The card to remove
     */
    fun reduce(card: Card) {
       // We have to play a bit of a game here in that this function needs to be reentrant-safe with respect to
       // hasOneOfSet, and also we can't mutate a group while it's in the (Hash)set. First identify held cards
-      // in one pass (in a very perverse case, I think you can deduce all 5 cards of player 2) or update a group of 3 to a
+      // in one pass (in a very extreme case, I think you can deduce all 5 cards of player 2) or update a group of 3 to a
       // group of 2, then call `holding` for the deduced held cards.
       val deducedHolding = ArrayList<Card>(4)
       for (group in hasOneOfSet.toList()) {
@@ -147,7 +190,8 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
     * To pigeonhole within a single hand, there must be more hasOneOf groups than unidentified cards (aka slots), and for some
     * card whose occurrence count among hasOneOf groups is maximal, the hasOneOf groups not containing that card
     * must require one less than the # of slots, and it must not be possible to fill the slots
-    * without this card with the constraint of the # of slots.
+    * without this card with the constraint of the # of slots. Therefore, the player must hold that card.
+    * @return true if it was proven that a player holds one of the cards that was in one of the hasOneOfSet elements
     */
    fun isolatedPigeonhole(): Boolean {
       val hasOfSet = hasOneOfSet
@@ -189,6 +233,10 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
       return false
    }
 
+   /**
+    * To perform a negative pigeonhole in a single hand, we must prove that that the hasOneOfSet is such that
+    * all remaining slots in this hand must have cards contained in it.
+    */
    fun negativeIsolatedPigeonhole(cardHolders: Map<Card, Hand>): Boolean {
       val hasOfSet = hasOneOfSet
       if (numberOfSlots == 0) return false
@@ -200,13 +248,20 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
          for (hasOf in hasOfSet) {
             flatHasOfSet.addAll(hasOf)
          }
+         // The simple deduction first: any card that isn't mentioned in hasOneOfSet, he doesn't have
          for (card in Card.entries) {
+            // additional complication due to multi-hand logic: skip over cards assigned to the multi-hand;
+            // this player may have that card, even though not mentioned in hasOneOfSet
             if (!cardHolders.contains(card) && !flatHasOfSet.contains(card)) {
                printDebug("negativeIsolatedPigeonhole doesn't have $card")
                cardsDoesntHave.add(card)
             }
          }
 
+         // An additional deduction: It is possible that even some cards in hasOneOfSet cannot be held. Suppose
+         // this hand has one open slot, 2 entries in hasOneOf, and one of the cards in one of the entries
+         // appears only once, i.e. in that entry. Then we know that actually, this player can't have it: it's
+         // impossible to satisfy both entries of hasOneOfSet by holding only that card.
          val newDoesntHave = EnumSet.noneOf(Card::class.java)
          val triedCards = EnumSet.noneOf(Card::class.java)
          for (group in hasOfSet) {
@@ -225,6 +280,7 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
                }
             }
          }
+         // these cards are in hasOneOfSet, so manually remove them now, and rebuild hasOneOfSet
          if (newDoesntHave.isNotEmpty()) {
             val hasOfList = hasOfSet.toList()
             for (group in hasOfList) {
@@ -234,6 +290,7 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
             hasOneOfSet.remove(EMPTY_CARD_SET)
          }
       }
+
       // Can we deduce the remaining slots entirely by the cardsDoesntHave?
       val numberOfUnassignedCards = Card.entries.size - cardHolders.size
       if (numberOfUnassignedCards - cardsDoesntHave.count { !cardHolders.contains(it) } == numberOfSlots) {
@@ -249,9 +306,17 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
       return false
    }
 
+   /**
+    * @return True iff it requires the number of available slots to satisfy the hand's `hasOneOfSet`.
+    */
    fun isSaturated(): Boolean =
       doesCoverRequire(hasOneOfSet, numberOfSlots)
 
+   /**
+    * There might be a faster way to do it -- what I do is check if it requires one card, then add 1 and see if it requires 2,
+    * stop once I get false, subtract 1.
+    * @return The minimum number of slots needed to satisfy the hand's `hasOneOfSet`.
+    */
    fun minimumCoverSize(): Int {
       var size = 1
       while (doesCoverRequire(hasOneOfSet, size)) {
@@ -261,11 +326,19 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
       return size - 1
    }
 
+   /**
+    * A wrapper to check if the hand doesn't have a card (for certain). Once a hand is deduced, it doesn't have any card
+    * not in `cardsHas`. This wrapper saves me the need of adding all other cards to `cardsDoesntHave`.
+    */
    fun doesntHave(card: Card): Boolean {
       return if (isDeduced) !cardsHas.contains(card) else cardsDoesntHave.contains(card)
    }
 
-   override fun holding(card: Card) {
+   /**
+    * This needs to be called when it is proven that the hand holds a card. It should be called directly by the game when
+    * I view an answer to my suggestion. It should be called by the hand itself whenever it proves that it holds a card.
+    */
+   fun holding(card: Card) {
       if (cardsHas.contains(card))
          return
       cardsHas.add(card)
@@ -277,7 +350,7 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
       }
       // Any `hasOneOf` groups that contains `card` should be removed because it no longer contains information.
       hasOneOfSet.removeIf { it.contains(card) }
-      // ClueGame should reduce the card from groups in other competitors
+      // The game should reduce the card from the hands of other competitors
       game.identifiedHolder(card, this)
    }
 
@@ -291,6 +364,7 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
       hasOneOfSet.add(group)
    }
 
+   // Used for heuristics to determine whether to run the last ditch effort
    fun numberOfUsefulCardsDoesntHave(holders: EnumMap<Card, *>): Int {
       return cardsDoesntHave.count { holders[it] == null }
    }
@@ -305,10 +379,16 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
 
 }
 
+/**
+ * It's a hand that represents more than one opponent! The multi-hand is registered as cardHolder of a card when it is known that
+ * some opponent holds a card, but that opponent is not uniquely identified. This comes up in multi-hand pigeonholing.
+ * The MultiCompetitorHand doesn't have its own logic (this could possibly be improved). It is more or less removed
+ * during last ditch analysis because all hand allocations need to be tested.
+ */
 class MultiCompetitorHand : Hand() {
    val holderHasOneOfs = mutableListOf<Pair<CompetitorHand, EnumSet<Card>>>()
    val heldCards = EnumSet.noneOf(Card::class.java)
-   override fun holding(card: Card) {
+   fun holding(card: Card) {
       heldCards.add(card)
    }
 }
@@ -316,6 +396,9 @@ class MultiCompetitorHand : Hand() {
 const val STARTING_PLAYER: Short = 1
 const val NUMBER_OF_PLAYERS: Short = 4
 
+/**
+ * The class that drives the deduction. Pass in the cards of player 1.
+ */
 class ClueGame(myCards: Array<Card>) {
    private val cardHolders = EnumMap<Card, Hand>(Card::class.java)
    private val myHand = MyHand(myCards)
@@ -332,8 +415,12 @@ class ClueGame(myCards: Array<Card>) {
          cardHolders[card] = myHand
    }
 
-   // We might be able to deduce the missing card of the type whose holder was just identified
-   // if there is only one unaccounted for remaining.
+   /**
+    * This is a callback from any CompetitorHand when it identifies that it holds a card (or when the game
+    * calls `holding`).
+    * @param card The card that `hand` was proven to hold
+    * @param hand The player's hand that was proven to hold `card`
+    */
    fun identifiedHolder(card: Card, hand: CompetitorHand) {
       printDebug("Identified holder $card = $hand")
       cardHolders[card] = hand
@@ -345,6 +432,16 @@ class ClueGame(myCards: Array<Card>) {
          player4.reduce(card)
    }
 
+   /**
+    * The big shebang. "deduce" consist of:
+    * * Digesting each examination
+    * * Performing pigeonholing. Since a successful pigeonholing usually results in identifying a new card's holder,
+    * *   it might be worthwhile to perform all pigeonholing again. This is indicated with a 'true' return.
+    * * Performing positive elimination
+    * * Performing negative elimination
+    * * Reviewing the case for a last ditch search
+    * @return the deduction of the envelope
+    */
    fun deduce(examinations: Array<Examination>): Deduction {
       var suggestingPlayer = STARTING_PLAYER
 
@@ -372,6 +469,7 @@ class ClueGame(myCards: Array<Card>) {
                4 -> player4
                else -> null
             }
+            // If `presentedCard` is non-null, I saw it
             examination.presentedCard?.let { presentedCard ->
                presentingHand?.holding(presentedCard)
             } ?: run {
@@ -396,9 +494,6 @@ class ClueGame(myCards: Array<Card>) {
       // apply negative elimination for all cards
       negativeElimination()
 
-      // Finally - the last ditch effort :)
-      // If all competitor's slots are saturated, it's easy to shuffle through all the possibilities
-      // of each hand and see if there's a card that always ends up in the 'envelope'.
       lastDitchEffort()
 
       return Deduction(deducedPerson, deducedWeapon, deducedRoom)
@@ -420,9 +515,7 @@ class ClueGame(myCards: Array<Card>) {
       rePigeonhole = rePigeonhole || pairPigeonhole(player2, player3, player4)
       rePigeonhole = rePigeonhole || pairPigeonhole(player3, player4, player2)
       rePigeonhole = rePigeonhole || pairPigeonhole(player4, player2, player3)
-
       triadPigeonhole()
-
       rePigeonhole = rePigeonhole || allPlayerTypedPigeonholing(Card.Type.WEAPON)
       rePigeonhole = rePigeonhole || allPlayerTypedPigeonholing(Card.Type.ROOM)
       rePigeonhole = rePigeonhole || allPlayerTypedPigeonholing(Card.Type.PERSON)
@@ -430,6 +523,7 @@ class ClueGame(myCards: Array<Card>) {
       return rePigeonhole
    }
 
+   // In pair pigeonholing, we look for a 2-card group that is in 2 players' `hasOneOfSet`s.
    private fun pairPigeonhole(hand1: CompetitorHand, hand2: CompetitorHand, otherHand: CompetitorHand): Boolean {
       for (group in hand1.hasOneGroups) {
          if (group.size == 2 && !cardHolders.contains(group.first()) && hand2.hasOneGroups.contains(group)) {
@@ -444,8 +538,8 @@ class ClueGame(myCards: Array<Card>) {
       return false
    }
 
+   // For a 3-way pigeonhole, all players must have a group containing the same 2 or 3 cards.
    private fun triadPigeonhole() {
-      // For a 3-way hole, all players must have a group containing the same 2 or 3 cards.
       outer@ for (group2 in player2.hasOneGroups) {
          if (cardHolders.contains(group2.firstOrNull())) {
             for (group3 in player3.hasOneGroups) {
@@ -469,8 +563,11 @@ class ClueGame(myCards: Array<Card>) {
       }
    }
 
+   // In all-player typed pigeonholing, we use card type analysis (one card of each type is in the envelope) on
+   // all opponents. Currently, I have come up with an analysis for pairs only.
+   // NOTE: negativeIsolatedPigeonholing is a prerequisite for this to work correctly.
+   // There's no need to do individuals: typed pigeonholing, when isolated, would be deduced by negativeIsolatedPigeonhole.
    private fun allPlayerTypedPigeonholing(type: Card.Type): Boolean {
-      // NOTE: negativeIsolatedPigeonholing is a prerequisite for this to work correctly
       val numberOfUnidentifiedTypeCardsInCompetitorHands = Card.cardsOfType(type).count {
          !cardHolders.contains(it)
       } - 1
@@ -481,7 +578,6 @@ class ClueGame(myCards: Array<Card>) {
       val p3CardsOfTypeMentionedInHasOneGroups = cardsOfTypeMentionedInHasOneGroups(player3, type)
       val p4CardsOfTypeMentionedInHasOneGroups = cardsOfTypeMentionedInHasOneGroups(player4, type)
 
-      // There's no need to do individuals: typed pigeonholing, when isolated, would be deduced by negativeIsolatedPigeonhole.
       // Consider pairs. We must know that the third competitor provably doesn't have any of the unidentified cards.
       fun pairTypedPigeonholing(
          playerA: CompetitorHand,
@@ -523,7 +619,7 @@ class ClueGame(myCards: Array<Card>) {
          return true
 
       // Is triad typed pigeonholing possible? I tried to construct a scenario, but couldn't construct one that didn't fall into
-      // an existing analysis and could lead to deduction of a type.
+      // an existing analysis and could lead to deduction of any card in the envelope.
       return false
    }
 
@@ -537,6 +633,12 @@ class ClueGame(myCards: Array<Card>) {
       return result
    }
 
+   /**
+    * Positive elimination is the determination that all of the cards of a type except for one have been proven to be
+    * held, so the other one must be in the envelope.
+    * Positive elimination should be repeated if a card is identified, since the determination might simplify a hand's
+    * `hasOneOfSet` items.
+    */
    private fun positiveElimination(): Boolean {
       if (deducedPerson == null && positiveElimination(Card.Type.PERSON))
          return true
@@ -547,9 +649,6 @@ class ClueGame(myCards: Array<Card>) {
       return false
    }
 
-   /**
-    * Given a type, check to see if owners have been determined for all but one.
-    */
    private fun positiveElimination(type: Card.Type): Boolean {
       var unaccountedCard: Card? = null
       var numberOfUnaccountedCards = 0
@@ -575,6 +674,11 @@ class ClueGame(myCards: Array<Card>) {
       return false
    }
 
+   /**
+    * Negative elimination is the determination that there is some card we have proven that no hands hold. So it
+    * must be in the envelope. It does not need to be repeated if successful. This is basically just a shortcut compared
+    * to the exhaustive search.
+    */
    private fun negativeElimination() {
       if (deducedPerson == null) {
          for (card in Card.PersonCards) {
@@ -593,9 +697,6 @@ class ClueGame(myCards: Array<Card>) {
       }
    }
 
-   /**
-    * Identify cards for which it is known that none of the players hold.
-    */
    private fun negativeElimination(card: Card) {
       when (card.type) {
          Card.Type.PERSON ->
@@ -632,6 +733,8 @@ class ClueGame(myCards: Array<Card>) {
    }
 
    /**
+    * As I have said, since I couldn't come up with any pigeonholing that works across all 3 opponents, there are some
+    * game transcripts for which it is possible to deduce something, yet my simple analyses haven't picked it up.
     * Lemma: Assume there is no negative knowledge (cardsDoesntHave is empty for all hands). Then, if there is only
     * one unidentified card in the hands, and that slot is unconstrained, you cannot deduce it. Miniproof: that slot
     * can be one of 2 cards, and there is no way to distinguish which is held and which is in the envelope.
@@ -640,8 +743,8 @@ class ClueGame(myCards: Array<Card>) {
     * can be at most 1; if two in the envelope are deduced, slack must be zero to deduce the last card.
     * P.S. by 'unconstrained' I mean that the number of cards required to satisfy a player's remaining `hasOneOf` groups
     * (the minimum cover) is smaller than the number of slots in the player's hand.
-    * Because of the presence of cardsDoesntHave, I have to fudge the slots math a bit. What I cam up with below is
-    *  close to the lowest unconstrained slots values that will pass on Kattis.
+    * Because of the presence of cardsDoesntHave, I have to fudge the slots math a bit. What I came up with below is
+    *  close to the lowest unconstrained slot values that will pass on Kattis.
     */
    private fun lastDitchEffort() {
       // reset multiHand for the last ditch effort
@@ -681,6 +784,13 @@ class ClueGame(myCards: Array<Card>) {
       }
    }
 
+   /**
+    * In the exhaustive search, we take all unassigned cards, and loop through all the combinations that the envelope
+    * could hold. If we can fill the hands with the remaining unassigned cards, we note the person, weapon, and room
+    * that were in the envelope. At the end, we check to see if there was just one card for each type that led to
+    * satisfying the hands when it was in the envelope: that would mean that card must be in the envelope, regardless
+    * of what cards actually fill the opponents' unidentified slots.
+    */
    private fun exhaustiveSearch() {
       val players = arrayOf(player2, player3, player4)
       val isCardUnheld = { card: Card -> !cardHolders.contains(card) }
@@ -718,6 +828,12 @@ class ClueGame(myCards: Array<Card>) {
          deducedRoom = roomMatches.first()
    }
 
+   /**
+    * The tedious task of determining whether players 2, 3, and 4 could between them hold `remainingCards` in their
+    * unidentified slots.
+    * @param remainingCards The cards that need to be allocated to the opponents' open slots.
+    * @return True iff the cards COULD be in opponents' hands
+    */
    private fun satisfyHands(players: Array<CompetitorHand>, remainingCards: EnumSet<Card>, index: Int = 0): Boolean {
       if (index == players.size) {
          hardAssert(remainingCards.isEmpty())
@@ -797,6 +913,10 @@ class ClueGame(myCards: Array<Card>) {
    }
 }
 
+/**
+ * Used in pigeonholing, determine whether the minisets of cards could be satisfied with not less than `coverSize`.
+ * @return True iff the `groups` cannot be satisfied by choosing fewer than `coverSize` cards.
+ */
 fun doesCoverRequire(groups: Collection<EnumSet<Card>>, coverSize: Int): Boolean {
    // Note: coverSize would only become negative if we have unsatisfiable constraints
    if (groups.isEmpty())
@@ -817,6 +937,11 @@ fun doesCoverRequire(groups: Collection<EnumSet<Card>>, coverSize: Int): Boolean
    return true
 }
 
+/**
+ * Used in pigeonholing, determine whether it is possible to satisfy the minisets of cards with no more than
+ * `maxCoverSize` cards.
+ * @return True iff you can satisfy `groups` by choosing `maxCoverSize` cards, or maybe fewer.
+ */
 fun doesCoverExist(groups: Collection<EnumSet<Card>>, maxCoverSize: Int): Boolean {
    if (maxCoverSize < 0)
       return false
@@ -836,6 +961,7 @@ fun doesCoverExist(groups: Collection<EnumSet<Card>>, maxCoverSize: Int): Boolea
    return groups.isEmpty()
 }
 
+// Read/write from standard filehandles
 fun ClueGameIO(inputStream: InputStream, outputStream: OutputStream) {
    inputStream.bufferedReader().use { reader ->
       val count = reader.readLine().toInt()
@@ -865,7 +991,7 @@ fun ClueGameIO(inputStream: InputStream, outputStream: OutputStream) {
    }
 }
 
-inline fun output(card: Card?, os: OutputStream) {
+fun output(card: Card?, os: OutputStream) {
    val char = card?.name?.first() ?: '?'
    os.write(char.code)
 }
