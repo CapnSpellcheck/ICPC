@@ -169,16 +169,14 @@ class CompetitorHand(val numberOfCards: Int, val game: ClueGame, val playerNo: I
       // in one pass (in a very extreme case, I think you can deduce all 5 cards of player 2) or update a group of 3 to a
       // group of 2, then call `holding` for the deduced held cards.
       val deducedHolding = ArrayList<Card>(4)
-      for (group in hasOneOfSet.toList()) {
-         if (group.contains(card)) {
-            // don't mutate while in the HashSet
-            hasOneOfSet.remove(group)
-            group.remove(card)
+      for (group in hasOneOfSet.filter { it.contains(card) }) {
+         hasOneOfSet.remove(group)
+         group.remove(card)
+         if (group.size == 1) {
+            val identified = group.first()
+            deducedHolding.add(identified)
+         } else {
             hasOneOfSet.add(group)
-            if (group.size == 1) {
-               val identified = group.first()
-               deducedHolding.add(identified)
-            }
          }
       }
       for (deducedHeld in deducedHolding) {
