@@ -5,6 +5,7 @@ import util.union
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.*
+import kotlin.collections.HashSet
 import kotlin.math.max
 
 /**
@@ -483,7 +484,7 @@ class ClueGame(myCards: Array<Card>) {
       }
 
       var isRepigeonholing = false
-      while (applyPigeonholes(isRepigeonholing))
+      while (applyPigeonholes())
          isRepigeonholing = true
 
       // apply positive elimination
@@ -497,7 +498,7 @@ class ClueGame(myCards: Array<Card>) {
       return Deduction(deducedPerson, deducedWeapon, deducedRoom)
    }
 
-   private fun applyPigeonholes(isRepeat: Boolean): Boolean {
+   private fun applyPigeonholes(): Boolean {
       printDebug("applyPigeonholes")
       var rePigeonhole = false
       rePigeonhole = rePigeonhole || player2.isolatedPigeonhole()
@@ -798,6 +799,8 @@ class ClueGame(myCards: Array<Card>) {
       val personMatches = EnumSet.noneOf(Card::class.java)
       val weaponMatches = EnumSet.noneOf(Card::class.java)
       val roomMatches = EnumSet.noneOf(Card::class.java)
+      val p3SatisfyCache = HashMap<EnumSet<Card>, Boolean>()
+      val p4SatisfyCache = HashMap<EnumSet<Card>, Boolean>()
       for (envelopePerson in deducedPerson?.let { listOf(it) } ?: remainingPersons) {
          for (envelopeRoom in deducedRoom?.let { listOf(it) } ?: remainingRooms) {
             for (envelopeWeapon in deducedWeapon?.let { listOf(it) } ?: remainingWeapons) {
@@ -807,7 +810,7 @@ class ClueGame(myCards: Array<Card>) {
                remainingCards.remove(envelopePerson)
                remainingCards.remove(envelopeWeapon)
                remainingCards.remove(envelopeRoom)
-               if (satisfyHands(players, remainingCards)) {
+               if (satisfyHands(players, remainingCards, p3SatisfyCache, p4SatisfyCache)) {
                   printDebug("exhaustiveSearch: match: $envelopePerson $envelopeWeapon $envelopeRoom")
                   personMatches.add(envelopePerson)
                   weaponMatches.add(envelopeWeapon)
@@ -816,10 +819,8 @@ class ClueGame(myCards: Array<Card>) {
             }
          }
       }
-      if (deducedPerson == null && personMatches.size == 1) {
+      if (deducedPerson == null && personMatches.size == 1)
          deducedPerson = personMatches.first()
-         printDebug("exhaustiveSearch: person unique: $deducedPerson")
-      }
       if (deducedWeapon == null && weaponMatches.size == 1)
          deducedWeapon = weaponMatches.first()
       if (deducedRoom == null && roomMatches.size == 1)
@@ -828,23 +829,38 @@ class ClueGame(myCards: Array<Card>) {
 
    /**
     * The tedious task of determining whether players 2, 3, and 4 could between them hold `remainingCards` in their
-    * unidentified slots.
+    * unidentified slots. I just added a memoization cache, which improved the runtime from 0.91 to 0.43 seconds
+    * on Kattis.
     * @param remainingCards The cards that need to be allocated to the opponents' open slots.
+    * @param p3satisfyCache The cache to be passed in (initially empty) for player 3
+    * @param p4satisfyCache The cache to be passed in (initially empty) for player 4
     * @return True iff the cards COULD be in opponents' hands
     */
-   private fun satisfyHands(players: Array<CompetitorHand>, remainingCards: EnumSet<Card>, index: Int = 0): Boolean {
+   private fun satisfyHands(
+      players: Array<CompetitorHand>,
+      remainingCards: EnumSet<Card>,
+      p3satisfyCache: HashMap<EnumSet<Card>, Boolean>,
+      p4satisfyCache: HashMap<EnumSet<Card>, Boolean>,
+      index: Int = 0
+   ): Boolean {
       if (index == players.size) {
          hardAssert(remainingCards.isEmpty())
          return true
       }
-
       val player = players[index]
+
+      if (player.playerNo == 3) {
+         p3satisfyCache[remainingCards]?.let { return it }
+      } else if (player.playerNo == 4) {
+         p4satisfyCache[remainingCards]?.let { return it }
+      }
+
       val playerAssignments = ArrayList<Card>(player.numberOfSlots)
       var satisfied = false
 
       fun fillPlayerAny() {
          if (playerAssignments.size == player.numberOfSlots) {
-            if (satisfyHands(players, remainingCards, index + 1)) {
+            if (satisfyHands(players, remainingCards, p3satisfyCache, p4satisfyCache, index + 1)) {
                satisfied = true
             }
             return
@@ -857,10 +873,10 @@ class ClueGame(myCards: Array<Card>) {
             playerAssignments.add(card)
             remainingCards.remove(card)
             fillPlayerAny()
+            remainingCards.add(card)
             if (satisfied)
                return
             playerAssignments.removeLast()
-            remainingCards.add(card)
          }
       }
 
@@ -875,10 +891,10 @@ class ClueGame(myCards: Array<Card>) {
                remainingCards.remove(card)
                playerAssignments.add(card)
                fillPlayer(remainingHasOneGroups.filterNot { it.contains(card) })
+               remainingCards.add(card)
                if (satisfied)
                   return
                playerAssignments.removeLast()
-               remainingCards.add(card)
             }
          } else {
             // select a card from remainingCards
@@ -887,6 +903,11 @@ class ClueGame(myCards: Array<Card>) {
       }
 
       fillPlayer(player.hasOneGroups.toMutableList())
+      when (player.playerNo) {
+         3 -> p3satisfyCache[EnumSet.copyOf(remainingCards)] = satisfied
+         4 -> p4satisfyCache[EnumSet.copyOf(remainingCards)] = satisfied
+         else -> Unit
+      }
       return satisfied
    }
 
