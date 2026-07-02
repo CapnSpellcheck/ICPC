@@ -43,20 +43,33 @@ class IntervalTreeMap<V> {
 
       /**
        * Searches the subtree rooted at this Node for the given Interval.
-       * @param int - the Interval to search for
+       * @param interval - the Interval to search for
        * @return the Node with the given Interval, if it exists; otherwise,
        * the sentinel Node
        */
-      fun search(int: IntRange): Node<V>? {
+      fun search(interval: IntRange): Node<V>? {
          tailrec fun <T> search(cur: Node<T>?): Node<T>? {
             if (cur == null)
                return null
-            var comp = cur.interval.compareTo(int)
+            var comp = cur.interval.compareTo(interval)
             if (comp > 0)
                return search(cur.leftChild)
             if (comp < 0)
                return search(cur.rightChild)
             return cur
+         }
+         return search(this)
+      }
+
+      fun search(int: Int): Node<V>? {
+         tailrec fun <T> search(cur: Node<T>?): Node<T>? {
+            if (cur == null)
+               return null
+            if (cur.interval.contains(int))
+               return cur
+            if (cur.interval.first < int)
+               return search(cur.leftChild)
+            return search(cur.rightChild)
          }
          return search(this)
       }
@@ -103,11 +116,11 @@ class IntervalTreeMap<V> {
        * determine if any overlap exists between an Interval and any of an
        * IntervalTree's Intervals. The returned Node will be the first
        * overlapping one found.
-       * @param int - the given Interval
+       * @param interval - the given Interval
        * @return an overlapping Node from this Node's subtree, if one exists;
        * otherwise the sentinel Node
        */
-      fun anyOverlappingNode(int: IntRange): Node<*>? {
+      fun anyOverlappingNode(interval: IntRange): Node<*>? {
          tailrec fun <T> anyOverlappingNode(t: IntRange, cur: Node<T>?): Node<T>? {
             if (cur == null)
                return null
@@ -120,30 +133,30 @@ class IntervalTreeMap<V> {
             }
             return cur
          }
-         return anyOverlappingNode(int, this)
+         return anyOverlappingNode(interval, this)
       }
 
       /**
        * Returns the minimum Node from this Node's subtree that overlaps the
        * given Interval.
-       * @param int - the given Interval
+       * @param interval - the given Interval
        * @return the minimum Node from this Node's subtree that overlaps the
        * Interval t, if one exists; otherwise, the sentinel Node
        */
-      fun minimumOverlappingNode(int: IntRange): Node<V>? {
+      fun minimumOverlappingNode(interval: IntRange): Node<V>? {
          var result: Node<V>? = null
          var cur = this
 
-         if (cur.maxEnd >= int.first) {
+         if (cur.maxEnd >= interval.first) {
             while (true) {
-               if (cur.interval.intersects(int)) {
+               if (cur.interval.intersects(interval)) {
 
                   // This node overlaps. There may be a lesser overlapper
                   // down the left subtree. No need to consider the right
                   // as all overlappers there will be greater.
                   result = cur
                   val left = cur.leftChild
-                  if (left == null || left.maxEnd < int.first)
+                  if (left == null || left.maxEnd < interval.first)
                   // Either no left subtree, or nodes can't overlap.
                      break
                   cur = left
@@ -152,16 +165,16 @@ class IntervalTreeMap<V> {
                   // This node doesn't overlap.
                   // Check the left subtree if an overlapper may be there
                   val left = cur.leftChild
-                  if (left != null && left.maxEnd >= int.first)
+                  if (left != null && left.maxEnd >= interval.first)
                      cur = left
                   else {
                      // Left subtree cannot contain an overlapper. Check the
                      // right sub-tree.
-                     if (cur.start > int.last)
+                     if (cur.start > interval.last)
                      // Nothing in the right subtree can overlap
                         break
                      val right = cur.rightChild
-                     if (right == null || right.maxEnd < int.first)
+                     if (right == null || right.maxEnd < interval.first)
                         break
                      cur = right
                   }
@@ -175,25 +188,25 @@ class IntervalTreeMap<V> {
       /**
        * An Iterator over all values in this Node's subtree that overlap the
        * given Interval t.
-       * @param int - the overlapping Interval
+       * @param interval - the overlapping Interval
        */
-      fun overlappers(int: IntRange): Iterator<OverlapResult<V>> = OverlapperIterator(this, int)
+      fun overlappers(interval: IntRange): Iterator<OverlapResult<V>> = OverlapperIterator(this, interval)
 
       /**
        * The next Node (relative to this Node) which overlaps the given
        * Interval t
-       * @param int - the overlapping Interval
+       * @param interval - the overlapping Interval
        * @return the next Node that overlaps the Interval t, if one exists;
        * otherwise, the sentinel Node
        */
-      fun nextOverlappingNode(int: IntRange): Node<V>? {
+      fun nextOverlappingNode(interval: IntRange): Node<V>? {
          var n = this
-         var retval: Node<V>? = rightChild?.minimumOverlappingNode(int)
+         var retval: Node<V>? = rightChild?.minimumOverlappingNode(interval)
          var parent = n.parent
          while (parent != null && retval == null) {
             if (n.isLeftChild()) {
-               retval = if (parent.interval.intersects(int))
-                  parent else parent.rightChild?.minimumOverlappingNode(int)
+               retval = if (parent.interval.intersects(interval))
+                  parent else parent.rightChild?.minimumOverlappingNode(interval)
             }
             n = parent
             parent = n.parent
@@ -354,36 +367,40 @@ class IntervalTreeMap<V> {
    /**
     * The Node in this IntervalTree that contains the given Interval.
     * This method returns the nil Node if the Interval t cannot be found.
-    * @param int - the Interval to search for.
+    * @param interval - the Interval to search for.
     */
-   private inline fun search(int: IntRange): Node<V>? = root?.search(int)
+   private inline fun search(interval: IntRange): Node<V>? = root?.search(interval)
+
+   private inline fun search(int: Int): Node<V>? = root?.search(int)
 
    /**
     * An Iterator over the Intervals in this IntervalTree that overlap the
     * given Interval
-    * @param int - the overlapping Interval
+    * @param interval - the overlapping Interval
     */
-   fun overlappers(int: IntRange): Iterator<OverlapResult<V>> = root?.overlappers(int) ?: Collections.emptyIterator()
+   fun overlappers(interval: IntRange): Iterator<OverlapResult<V>> = root?.overlappers(interval) ?: Collections.emptyIterator()
 
    /**
     * Whether or not any of the Intervals in this IntervalTree overlap the given
     * Interval
-    * @param int - the potentially overlapping Interval
+    * @param interval - the potentially overlapping Interval
     */
-   fun hasAnyOverlap(int: IntRange): Boolean {
-      return root?.anyOverlappingNode(int) != null
+   fun hasAnyOverlap(interval: IntRange): Boolean {
+      return root?.anyOverlappingNode(interval) != null
    }
 
    /**
     * Whether or not this IntervalTree contains the given Interval.
     * @param t - the Interval to search for
     */
-   fun contains(int: IntRange): Boolean = search(int) != null
+   fun contains(interval: IntRange): Boolean = search(interval) != null
 
    /**
     * Get the ancillary value of a given interval, or null if no such interval is found.
     */
-   fun get(int: IntRange): V? = search(int)?.ancillary
+   fun get(interval: IntRange): V? = search(interval)?.ancillary
+
+   fun getContaining(int: Int): IntRange? = search(int)?.interval
 
    /**
     * An Iterator which traverses the tree in ascending order.
@@ -410,12 +427,12 @@ class IntervalTreeMap<V> {
     * This method constructs a new Node containing the given value and places
     * it into the tree. If the value already exists within the tree, the tree
     * remains unchanged.
-    * @param int - the value to place into the tree
+    * @param interval - the value to place into the tree
     * @return if the value did not already exist, i.e., true if the tree was
     * changed, false if it was not
     */
-   fun insert(int: IntRange, ancillaryData: V): Boolean {
-      val new = Node(int, ancillaryData)
+   fun insert(interval: IntRange, ancillaryData: V): Boolean {
+      val new = Node(interval, ancillaryData)
 
       var y: Node<V>? = null
       var x: Node<V>? = root
@@ -424,7 +441,7 @@ class IntervalTreeMap<V> {
       while (x != null) {                         // Traverse the tree down to a leaf.
          y = x
          x.maxEnd = max(x.maxEnd, new.maxEnd) // Update maxEnd on the way down.
-         val intCompare: Int = int.compareTo(x.interval)
+         val intCompare: Int = interval.compareTo(x.interval)
          x = if (intCompare < 0) {
             isLeft = true
             x.leftChild
@@ -511,11 +528,11 @@ class IntervalTreeMap<V> {
     * Deletes the given value from this IntervalTree.
     *
     * If the value does not exist, this IntervalTree remains unchanged.
-    * @param int - the Interval to delete from the tree
+    * @param interval - the Interval to delete from the tree
     * @return whether or not an Interval was removed from this IntervalTree
     */
-   fun delete(int: IntRange) {
-      val node = search(int) ?: return
+   fun delete(interval: IntRange) {
+      val node = search(interval) ?: return
       delete(node)
    }
 
@@ -752,4 +769,13 @@ class IntervalTreeMap<V> {
 
    }
 
+}
+
+inline fun IntervalTreeMap<Unit>.insert(interval: IntRange) {
+   this.insert(interval, Unit)
+}
+
+inline fun IntervalTreeMap<Unit>.addAll(collection: Collection<IntRange>) {
+   for (interval in collection)
+      this.insert(interval)
 }

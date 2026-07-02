@@ -72,3 +72,7 @@ fun <E : Enum<E>> EnumSet<E>.union(other: EnumSet<E>): EnumSet<E> {
    copy.addAll(other)
    return copy
 }
+
+fun Int?.gte(other: Int): Boolean {
+   return this != null && this >= other
+}
