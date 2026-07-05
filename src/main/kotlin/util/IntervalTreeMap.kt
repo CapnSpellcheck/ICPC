@@ -779,3 +779,10 @@ inline fun IntervalTreeMap<Unit>.addAll(collection: Collection<IntRange>) {
    for (interval in collection)
       this.insert(interval)
 }
+
+inline fun IntervalTreeMap<Unit>.toList() : List<IntRange> {
+   val list = ArrayList<IntRange>()
+   for (result in this.iterator())
+      list.add(result.interval)
+   return list
+}

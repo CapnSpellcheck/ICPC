@@ -29,6 +29,10 @@ inline fun IntRange.intersects(other: IntRange): Boolean {
    return this.first <= other.last && this.last >= other.first
 }
 
+inline fun IntRange.contains(other: IntRange): Boolean {
+   return other.first >= this.first && other.last <= this.last
+}
+
 inline fun IntRange.intersection(other: IntRange): IntRange =
    IntRange(max(this.first, other.first), min(this.last, other.last))
 
@@ -40,6 +44,9 @@ inline fun IntRange.subtracting(other: IntRange): Pair<IntRange?, IntRange?> {
    val second = IntRange(intersection.last + 1, this.last)
    return Pair(if (first.isEmpty()) second else first, if (first.isEmpty()) null else second)
 }
+
+inline val IntRange.width: Int
+   get() = last - first + 1
 
 fun Random.nextString(length: Int): String {
    val leftLimit = 97 // letter 'a'
@@ -73,6 +80,6 @@ fun <E : Enum<E>> EnumSet<E>.union(other: EnumSet<E>): EnumSet<E> {
    return copy
 }
 
-fun Int?.gte(other: Int): Boolean {
-   return this != null && this >= other
-}
+fun Int?.gte(other: Int): Boolean = this != null && this >= other
+
+fun Int?.lt(other: Int): Boolean = this != null && this < other
