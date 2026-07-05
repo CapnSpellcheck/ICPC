@@ -65,7 +65,7 @@ inline fun hardAssert(value: Boolean) {
       throw AssertionError("assert failed")
 }
 
-public inline fun IntArray.indexBefore(predicate: (Int) -> Boolean, before: Int): Int {
+inline fun IntArray.indexBefore(predicate: (Int) -> Boolean, before: Int): Int {
    for (index in before - 1 downTo 0) {
       if (predicate(this[index])) {
          return index
@@ -79,7 +79,3 @@ fun <E : Enum<E>> EnumSet<E>.union(other: EnumSet<E>): EnumSet<E> {
    copy.addAll(other)
    return copy
 }
-
-fun Int?.gte(other: Int): Boolean = this != null && this >= other
-
-fun Int?.lt(other: Int): Boolean = this != null && this < other

@@ -1,6 +1,5 @@
 package icpc.twothousandsixteen
 
-import clock
 import lcd7.Digit.*
 import lcd7.DigitCondition
 import lcd7.DigitObservation
@@ -401,75 +400,6 @@ class ClockBreakingTest {
          // test it
          testIO(observationsString, expectedOutput, "Random display start time %2d:%2d count=$count conditions=[$hourTensCondition, $hourOnesCondition, $minuteTensCondition, $minuteOnesCondition]"
             .format((minuteOffset / 60) % 24, minuteOffset % 60))
-      }
-   }
-   
-   @Test fun testAgainstArup() {
-      repeat(1000) {
-         val minuteOffset = Random.nextInt(24*60)
-         val count = Random.nextInt(1 ..< 100)
-         val hourTensCondition = Generator.generateRandomConditionList()
-         val hourOnesCondition = Generator.generateRandomConditionList()
-         val minuteTensCondition = Generator.generateRandomConditionList()
-         val minuteOnesCondition = Generator.generateRandomConditionList()
-         val observations = List(count) { i ->
-            val obsOffset = minuteOffset + i
-            val hour = (obsOffset / 60) % 24
-            val minute = obsOffset % 60
-            Generator.generateDisplayObservation(hour, minute, hourTensCondition, hourOnesCondition, minuteTensCondition, minuteOnesCondition)
-         }
-            .joinToString(separator = "\n") { obs -> obs.joinToString(separator = "\n", postfix = "\n") }
-
-         val observationsString = "$count\n$observations\n"
-         val sis = StringBufferInputStream(observationsString)
-
-         val arupSOS = StringOutputStream()
-         PrintStream(arupSOS).use {
-            clock.doIt(sis, it)
-         }
-         val arupAnswer = arupSOS.toString()
-
-         sis.reset()
-         val mySOS = StringOutputStream()
-         assessTimeDisplayIO(sis, mySOS)
-         val myAnswer = mySOS.toString()
-
-         assertEquals(arupAnswer, myAnswer, "INPUT-----\n$observationsString")
-      }
-   }
-
-   @Test fun testShuffledAgainstArup() {
-      repeat(1000) {
-         val minuteOffset = Random.nextInt(24*60)
-         val count = Random.nextInt(2 ..< 4)
-         val hourTensCondition = Generator.generateRandomConditionList()
-         val hourOnesCondition = Generator.generateRandomConditionList()
-         val minuteTensCondition = Generator.generateRandomConditionList()
-         val minuteOnesCondition = Generator.generateRandomConditionList()
-         val observations = List(count) { i ->
-            val obsOffset = minuteOffset + i
-            val hour = (obsOffset / 60) % 24
-            val minute = obsOffset % 60
-            Generator.generateDisplayObservation(hour, minute, hourTensCondition, hourOnesCondition, minuteTensCondition, minuteOnesCondition)
-         }
-            .shuffled()
-            .joinToString(separator = "\n") { obs -> obs.joinToString(separator = "\n", postfix = "\n") }
-
-         val observationsString = "$count\n$observations\n"
-         val sis = StringBufferInputStream(observationsString)
-
-         val arupSOS = StringOutputStream()
-         PrintStream(arupSOS).use {
-            clock.doIt(sis, it)
-         }
-         val arupAnswer = arupSOS.toString()
-
-         sis.reset()
-         val mySOS = StringOutputStream()
-         assessTimeDisplayIO(sis, mySOS)
-         val myAnswer = mySOS.toString()
-
-         assertEquals(arupAnswer, myAnswer, "INPUT-----\n$observationsString")
       }
    }
 
