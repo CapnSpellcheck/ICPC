@@ -8,9 +8,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertContentEquals
 
 class CompleteStaggeredVertexGrid(numRows: Int, numVerticesPerRow: Int) : StaggeredVertexGrid(numRows, numVerticesPerRow) {
-   override fun horizontalSegmentFrom(row: Int, startColumn: Int): Boolean = true
-   override fun backslashSegmentBelow(row: Int, column: Int): Boolean = true
-   override fun forwardSlashSegmentBelow(row: Int, column: Int): Boolean = true
+   override fun horizontalSegmentFrom(row: Int, startColumn: Int): Boolean = startColumn in (0 ..< verticesPerRow - 1)
+   override fun backslashSegmentBelow(row: Int, column: Int, rowIsOdd: Boolean): Boolean = true
+
+   override fun forwardSlashSegmentBelow(row: Int, column: Int, rowIsOdd: Boolean): Boolean = true
 }
 
 class RandomStaggeredVertexGrid(
@@ -20,30 +21,53 @@ class RandomStaggeredVertexGrid(
    numRows: Int,
    numVerticesPerRow: Int
 ) : StaggeredVertexGrid(numRows, numVerticesPerRow) {
-   override fun horizontalSegmentFrom(row: Int, startColumn: Int): Boolean = Random.nextFloat() < horizontalP
-   override fun backslashSegmentBelow(row: Int, column: Int): Boolean = Random.nextFloat() < backP
-   override fun forwardSlashSegmentBelow(row: Int, column: Int): Boolean = Random.nextFloat() < forwardP
+   val horizontalTable = mutableMapOf<IntPair, Boolean>()
+   val forwardTable = mutableMapOf<IntPair, Boolean>()
+   val backTable = mutableMapOf<IntPair, Boolean>()
+   init {
+      // warm the tables to get accurate performance timings
+      for (row in 0 ..< numRows) {
+         for (column in 0 ..< numVerticesPerRow) {
+            horizontalSegmentFrom(row, column)
+            backslashSegmentBelow(row, column, true)
+            forwardSlashSegmentBelow(row, column, true)
+         }
+      }
+   }
+   override fun horizontalSegmentFrom(row: Int, startColumn: Int): Boolean {
+      if (startColumn >= verticesPerRow - 1) return false
+      val answer = horizontalTable.getOrPut(IntPair(row, startColumn)) {
+         Random.nextFloat() < horizontalP
+      }
+      return answer
+   }
+   override fun backslashSegmentBelow(row: Int, column: Int, rowIsOdd: Boolean): Boolean {
+      val answer = backTable.getOrPut(IntPair(row, column)) {
+         Random.nextFloat() < backP
+      }
+      return answer
+   }
+
+   override fun forwardSlashSegmentBelow(row: Int, column: Int, rowIsOdd: Boolean): Boolean {
+      val answer = forwardTable.getOrPut(IntPair(row, column)) {
+         Random.nextFloat() < forwardP
+      }
+      return answer
+   }
+
 }
 
 class TrianglesTest {
-   @Test fun testBuildHorizontalSegmentsInfo() {
-      val grid1 = TextStaggeredVertexGrid("""
+   @Test fun testForwardSlashLine() {
+      val grid = TextStaggeredVertexGrid("""
          x
       """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray(), 1)
-      val horizontalSegmentInfo1 = buildHorizontalSegmentsInfo(grid1)
-      assertContentEquals(listOf(
-         listOf(), // row 0
-      ), horizontalSegmentInfo1.map { it })
+      var converter = SlashIndexConverter(grid.verticesPerRow)
+      var lastForwardSlashIndex = converter.forwardSlashIndex(grid.numRows - 1, grid.verticesPerRow - 1)
+      var forwardSlashLines = Array<ForwardSlashLine>(1 + lastForwardSlashIndex) { i -> ForwardSlashLine(grid, i) }
+      assertContentEquals(listOf(null), forwardSlashLines.map { it.currentSegment })
 
       val grid2 = TextStaggeredVertexGrid("""
-         x   x---x---x   x---x   x
-      """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray(), 1)
-      val horizontalSegmentInfo2 = buildHorizontalSegmentsInfo(grid2)
-      assertContentEquals(listOf(
-         listOf(IntRange(1, 2), IntRange(4, 4)), // row 0
-      ), horizontalSegmentInfo2.map { it })
-
-      val grid3 = TextStaggeredVertexGrid("""
          x   x---x---x   x
               \ /   / \
            x   x---x   x   x
@@ -52,127 +76,43 @@ class TrianglesTest {
             /   / \   \ / \
            x---x---x---x---x
       """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray(), 4)
-      val horizontalSegmentInfo3 = buildHorizontalSegmentsInfo(grid3)
+      converter = SlashIndexConverter(grid2.verticesPerRow)
+      lastForwardSlashIndex = converter.forwardSlashIndex(grid2.numRows - 1, grid2.verticesPerRow - 1)
+      forwardSlashLines = Array<ForwardSlashLine>(1 + lastForwardSlashIndex) { i -> ForwardSlashLine(grid2, i) }
+      forwardSlashLines.map { it.advanceToRow(1) }
       assertContentEquals(listOf(
-         listOf(IntRange(1, 2),), // row 0
-         listOf(IntRange(1, 1),), // row 1
-         listOf(IntRange(1, 3),), // row 2
-         listOf(IntRange(0, 3),), // row 3
-      ), horizontalSegmentInfo3.map { it })
-   }
+         null,
+         null,
+         Interval(0, 2),
+         Interval(0, 2),
+         null,
+         null,
+         null,
+      ), forwardSlashLines.map { it.currentSegment })
 
-   @Test fun testBuildBackslashSegmentsInfo() {
-      val grid1 = TextStaggeredVertexGrid("""
-         x
-      """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray(), 1)
-      val backslashSegmentInfo1 = buildBackslashSegmentsInfo(grid1, SlashIndexConverter((grid1.numRows)))
+      forwardSlashLines.map { it.advanceToRow(2) }
       assertContentEquals(listOf(
-         listOf(),
-      ), backslashSegmentInfo1.map { it.toList() })
+         null,
+         null,
+         Interval(0, 2),
+         Interval(0, 2),
+         null,
+         null,
+         null,
+      ), forwardSlashLines.map { it.currentSegment })
 
-      val grid2 = TextStaggeredVertexGrid("""
-         x   x   x
-          \   \
-           x   x   x
-                \
-         x   x   x
-          \   \
-           x   x   x
-      """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray(), 4)
-      val backslashSegmentInfo2 = buildBackslashSegmentsInfo(grid2, SlashIndexConverter((grid2.numRows)))
+      forwardSlashLines.map { it.advanceToRow(3) }
       assertContentEquals(listOf(
-         listOf(IntRange(2, 2)),
-         listOf(IntRange(0, 0), IntRange(2, 2)),
-         listOf(IntRange(0, 1)),
-         emptyList()
-      ), backslashSegmentInfo2.map { it.toList() })
-
-      val grid3 = TextStaggeredVertexGrid("""
-         x   x---x---x   x
-              \ /   / \
-           x   x---x   x   x
-              / \ / \   \
-         x   x---x---x---x
-            /   / \   \ / \
-           x---x---x---x---x
-      """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray(), 4)
-      val backslashSegmentInfo3 = buildBackslashSegmentsInfo(grid3, SlashIndexConverter((grid3.numRows)))
-      assertContentEquals(listOf(
-         emptyList(),
-         emptyList(),
-         listOf(IntRange(0, 2)),
-         listOf(IntRange(1, 2)),
-         listOf(IntRange(0, 2)),
-         emptyList(),
-      ), backslashSegmentInfo3.map { it.toList() })
+         null,
+         null,
+         Interval(0, 2),
+         Interval(0, 2),
+         null,
+         Interval(2, 2),
+         null,
+      ), forwardSlashLines.map { it.currentSegment })
 
       val grid4 = TextStaggeredVertexGrid("""
-         x   x---x
-              \
-           x   x---x
-                \ 
-         x   x---x
-          \ /     \ 
-           x---x---x
-                \
-         x   x---x
-      """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray(), 5)
-      val backslashSegmentInfo4 = buildBackslashSegmentsInfo(grid4, SlashIndexConverter((grid4.numRows)))
-      assertContentEquals(listOf(
-         emptyList(),
-         listOf(IntRange(2, 2)),
-         listOf(IntRange(3, 3)),
-         listOf(IntRange(0, 2)),
-         emptyList(),
-      ), backslashSegmentInfo4.map { it.toList() })
-   }
-
-   @Test fun testBuildForwardSlashSegmentsInfo() {
-      val grid2 = TextStaggeredVertexGrid("""
-         x
-      """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray(), 1)
-      val forwardSlashSegmentInfo2 = buildForwardSlashSegmentsInfo(grid2, SlashIndexConverter((grid2.numRows)))
-      assertContentEquals(listOf(emptyList()), forwardSlashSegmentInfo2.map { it.toList() })
-
-      val grid3 = TextStaggeredVertexGrid("""
-         x   x---x---x   x
-              \ /   / \
-           x   x---x   x   x
-              / \ / \   \
-         x   x---x---x---x
-            /   / \   \ / \
-           x---x---x---x---x
-      """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray(), 4)
-      val forwardSlashSegmentsInfo3 = buildForwardSlashSegmentsInfo(grid3, SlashIndexConverter((grid3.numRows)))
-      assertContentEquals(listOf(
-         emptyList(),
-         emptyList(),
-         listOf(IntRange(0, 2)),
-         listOf(IntRange(0, 2)),
-         emptyList(),
-         listOf(IntRange(2, 2)),
-         emptyList(),
-      ), forwardSlashSegmentsInfo3.map { it.toList() })
-
-      val grid4 = TextStaggeredVertexGrid("""
-         x   x   x
-            /
-           x   x   x
-              / 
-         x   x   x
-            /   /
-           x   x   x
-      """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray(), 4)
-      val forwardSlashSegmentInfo4 = buildForwardSlashSegmentsInfo(grid4, SlashIndexConverter((grid4.numRows)))
-      assertContentEquals(listOf(
-         emptyList(),
-         listOf(IntRange(0, 0)),
-         listOf(IntRange(1, 2),),
-         listOf(IntRange(2, 2)),
-         emptyList(),
-      ), forwardSlashSegmentInfo4.map { it.toList() })
-
-      val grid5 = TextStaggeredVertexGrid("""
          x   x   x   x
                 /   /
            x   x   x   x
@@ -181,37 +121,146 @@ class TrianglesTest {
             /   /  
            x   x   x   x
       """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray(), 4)
-      val forwardSlashSegmentInfo5 = buildForwardSlashSegmentsInfo(grid5, SlashIndexConverter((grid5.numRows)))
+      converter = SlashIndexConverter(grid4.verticesPerRow)
+      lastForwardSlashIndex = converter.forwardSlashIndex(grid4.numRows - 1, grid4.verticesPerRow - 1)
+      forwardSlashLines = Array<ForwardSlashLine>(1 + lastForwardSlashIndex) { i -> ForwardSlashLine(grid4, i) }
+      forwardSlashLines.map { it.advanceToRow(1) }
       assertContentEquals(listOf(
-         emptyList(),
-         emptyList(),
-         listOf(IntRange(0, 0), IntRange(2, 2)),
-         listOf(IntRange(0, 2)),
-         listOf(IntRange(1, 1)),
-         emptyList(),
-      ), forwardSlashSegmentInfo5.map { it.toList() })
+         null,
+         null,
+         Interval(0, 0),
+         Interval(0, 2),
+         null,
+         null,
+      ), forwardSlashLines.map { it.currentSegment })
+
+      forwardSlashLines.map { it.advanceToRow(2) }
+      assertContentEquals(listOf(
+         null,
+         null,
+         null,
+         Interval(0, 2),
+         Interval(1, 1),
+         null,
+      ), forwardSlashLines.map { it.currentSegment })
+
+      forwardSlashLines.map { it.advanceToRow(3) }
+      assertContentEquals(listOf(
+         null,
+         null,
+         Interval(2, 2),
+         Interval(0, 2),
+         null,
+         null,
+      ), forwardSlashLines.map { it.currentSegment })
    }
 
-   @Test fun testSample1Preprocessed() {
-      val horizontalSegmentsInfo = arrayOf(
-         listOf(IntRange(1, 2),), // row 0
-         listOf(IntRange(1, 1),), // row 1
-         listOf(IntRange(1, 3),), // row 2
-         listOf(IntRange(0, 3),), // row 3
-      )
+   @Test fun testBackslashLine() {
+      val grid1 = TextStaggeredVertexGrid("""
+         x
+      """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray(), 1)
+      var converter = SlashIndexConverter(grid1.verticesPerRow)
+      var lastBackslashIndex = converter.backslashIndex(grid1.numRows - 1, 0)
+      var backslashLines = Array<BackslashLine>(1 + lastBackslashIndex) { i -> BackslashLine(grid1, i) }
+      assertContentEquals(listOf(null), backslashLines.map { it.currentSegment })
 
-      val forwardSlashSegmentsInfo = Array<MutableList<IntRange>>(7) { ArrayList() }
-      forwardSlashSegmentsInfo[2].addAll(listOf(IntRange(0, 2)))
-      forwardSlashSegmentsInfo[3].addAll(listOf(IntRange(0, 2)))
-      forwardSlashSegmentsInfo[5].addAll(listOf(IntRange(2, 2)))
+      val grid2 = TextStaggeredVertexGrid("""
+         x   x   x
+          \   \
+           x   x   x
+                \
+         x   x   x
+          \   \
+           x   x   x
+      """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray(), 4)
+      converter = SlashIndexConverter(grid2.verticesPerRow)
+      lastBackslashIndex = converter.backslashIndex(grid2.numRows - 1, 0)
+      backslashLines = Array<BackslashLine>(1 + lastBackslashIndex) { i -> BackslashLine(grid2, i) }
+      backslashLines.map { it.advanceToRow(1) }
+      assertContentEquals(listOf(
+         null,
+         Interval(0, 1),
+         Interval(0, 0),
+         null,
+      ), backslashLines.map { it.currentSegment })
 
-      val backslashSegmentsInfo = Array<MutableList<IntRange>>(6) { ArrayList() }
-      backslashSegmentsInfo[2].addAll(listOf(IntRange(0, 2)))
-      backslashSegmentsInfo[3].addAll(listOf(IntRange(1, 2)))
-      backslashSegmentsInfo[4].addAll(listOf(IntRange(0, 2)))
+      backslashLines.map { it.advanceToRow(2) }
+      assertContentEquals(listOf(
+         null,
+         Interval(0, 1),
+         null,
+         null,
+      ), backslashLines.map { it.currentSegment })
 
-      val result = triangles(horizontalSegmentsInfo, forwardSlashSegmentsInfo, backslashSegmentsInfo)
-      assertEquals(12L, result)
+      backslashLines.map { it.advanceToRow(3) }
+      assertContentEquals(listOf(
+         null,
+         null,
+         Interval(2, 2),
+         Interval(2, 2),
+      ), backslashLines.map { it.currentSegment })
+
+      val grid3 = TextStaggeredVertexGrid("""
+         x   x---x---x   x
+              \ /   / \
+           x   x---x   x   x
+              / \ / \   \
+         x   x---x---x---x
+            /   / \   \ / \
+           x---x---x---x---x
+      """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray(), 4)
+      converter = SlashIndexConverter(grid3.verticesPerRow)
+      lastBackslashIndex = converter.backslashIndex(grid3.numRows - 1, 0)
+      backslashLines = Array<BackslashLine>(1 + lastBackslashIndex) { i -> BackslashLine(grid3, i) }
+      backslashLines.map { it.advanceToRow(1) }
+      assertContentEquals(listOf(
+         null,
+         Interval(0, 2),
+         null,
+         Interval(0, 2),
+         null,
+         null,
+      ), backslashLines.map { it.currentSegment })
+
+      backslashLines.map { it.advanceToRow(2) }
+      assertContentEquals(listOf(
+         null,
+         Interval(0, 2),
+         Interval(1, 2),
+         Interval(0, 2),
+         null,
+         null,
+      ), backslashLines.map { it.currentSegment })
+
+      backslashLines.map { it.advanceToRow(3) }
+      assertContentEquals(listOf(
+         null,
+         Interval(0, 2),
+         Interval(1, 2),
+         Interval(0, 2),
+         null,
+         null,
+      ), backslashLines.map { it.currentSegment })
+//
+//      val grid4 = TextStaggeredVertexGrid("""
+//         x   x---x
+//              \
+//           x   x---x
+//                \
+//         x   x---x
+//          \ /     \
+//           x---x---x
+//                \
+//         x   x---x
+//      """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray(), 5)
+//      val backslashSegmentInfo4 = buildBackslashSegmentsInfo(grid4, SlashIndexConverter((grid4.verticesPerRow)))
+//      assertContentEquals(listOf(
+//         emptyList(),
+//         listOf(Interval(0, 2)),
+//         listOf(Interval(3, 3)),
+//         listOf(Interval(2, 2)),
+//         emptyList(),
+//      ), backslashSegmentInfo4.map { it.toList() })
    }
 
    @Test fun testSample1() {
@@ -235,6 +284,18 @@ class TrianglesTest {
            x
           / \
          x   x
+      """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray()
+      val result = triangles(TextStaggeredVertexGrid(text, 3) )
+      assertEquals(1L, result)
+   }
+
+   @Test fun testSample2Flipped() {
+      val text = """
+         x   x
+          \ /
+           x
+          / \
+         x---x
       """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray()
       val result = triangles(TextStaggeredVertexGrid(text, 3) )
       assertEquals(1L, result)
@@ -264,6 +325,20 @@ class TrianglesTest {
                 \ /      
          x   x---x---x---x
                   \   \ /  
+           x---x---x---x---x
+      """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray()
+      val result = triangles(TextStaggeredVertexGrid(text, 4) )
+      assertEquals(4L, result)
+   }
+
+   @Test fun testOnlyUp() {
+      val text = """
+         x   x---x---x   x
+                /   / \
+           x   x---x---x   x
+              / \   \    
+         x   x---x---x---x
+            / \   \   \ 
            x---x---x---x---x
       """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray()
       val result = triangles(TextStaggeredVertexGrid(text, 4) )
@@ -304,41 +379,53 @@ class TrianglesTest {
    }
 
    @Test fun testTime() {
-      val complete1000x = CompleteStaggeredVertexGrid(1000, 1000)
+      val random2000sq = RandomStaggeredVertexGrid(0.5f, 0.5f, 0.5f, 1000, 1000)
       var start = System.currentTimeMillis()
-      var count = triangles(complete1000x)
+      var count = triangles(random2000sq)
       var elapsed = System.currentTimeMillis() - start
-      println("1000x1000: $elapsed ms")
-      val random1000x = RandomStaggeredVertexGrid(0.6f, 0.5f, 0.2f, 1000, 1000)
-      start = System.currentTimeMillis()
-      count = triangles(random1000x)
-      elapsed = System.currentTimeMillis() - start
-      println("1000x1000: $elapsed ms")
+      println("Cubed: $elapsed ms")
+   }
+
+   @Test fun testBug() {
+      val text = """
+         x---x---x   x---x
+          \   \ /       /
+           x---x   x---x   x
+          /   /   /
+         x   x---x   x---x
+      """.trimIndent().split("\n").map { DefaultString(it) }.toTypedArray()
+      val result = triangles(TextStaggeredVertexGrid(text, 3) )
+      assertEquals(1L, result)
    }
 }
 
 class SlashIndexConverterTest {
    @Test fun testBackslash() {
-      assertEquals(2, SlashIndexConverter(5).backslashIndex(0, 0))
-      assertEquals(2, SlashIndexConverter(5).backslashIndex(1, 0))
-      assertEquals(1, SlashIndexConverter(5).backslashIndex(2, 0))
-      assertEquals(1, SlashIndexConverter(5).backslashIndex(3, 0))
-      assertEquals(0, SlashIndexConverter(5).backslashIndex(4, 0))
+      assertEquals(4, SlashIndexConverter(5).backslashIndex(0, 0))
+      assertEquals(4, SlashIndexConverter(5).backslashIndex(1, 0))
+      assertEquals(5, SlashIndexConverter(5).backslashIndex(2, 0))
+      assertEquals(5, SlashIndexConverter(5).backslashIndex(3, 0))
+      assertEquals(6, SlashIndexConverter(5).backslashIndex(4, 0))
 
       assertEquals(3, SlashIndexConverter(5).backslashIndex(0, 1))
       assertEquals(3, SlashIndexConverter(5).backslashIndex(1, 1))
-      assertEquals(2, SlashIndexConverter(5).backslashIndex(2, 1))
-      assertEquals(2, SlashIndexConverter(5).backslashIndex(3, 1))
-      assertEquals(1, SlashIndexConverter(5).backslashIndex(4, 1))
+      assertEquals(4, SlashIndexConverter(5).backslashIndex(2, 1))
+      assertEquals(4, SlashIndexConverter(5).backslashIndex(3, 1))
+      assertEquals(5, SlashIndexConverter(5).backslashIndex(4, 1))
 
-      assertEquals(1, SlashIndexConverter(4).backslashIndex(0, 0))
-      assertEquals(1, SlashIndexConverter(4).backslashIndex(1, 0))
-      assertEquals(0, SlashIndexConverter(4).backslashIndex(2, 0))
-      assertEquals(0, SlashIndexConverter(4).backslashIndex(3, 0))
+      assertEquals(0, SlashIndexConverter(5).backslashIndex(0, 4))
+      assertEquals(0, SlashIndexConverter(5).backslashIndex(1, 4))
+      assertEquals(1, SlashIndexConverter(5).backslashIndex(2, 4))
+      assertEquals(1, SlashIndexConverter(5).backslashIndex(3, 4))
+      assertEquals(2, SlashIndexConverter(5).backslashIndex(4, 4))
 
-      assertEquals(2, SlashIndexConverter(4).backslashIndex(0, 1))
-      assertEquals(2, SlashIndexConverter(4).backslashIndex(1, 1))
-      assertEquals(1, SlashIndexConverter(4).backslashIndex(2, 1))
-      assertEquals(1, SlashIndexConverter(4).backslashIndex(3, 1))
+      assertEquals(3, SlashIndexConverter(4).backslashIndex(0, 0))
+      assertEquals(3, SlashIndexConverter(4).backslashIndex(1, 0))
+      assertEquals(4, SlashIndexConverter(4).backslashIndex(2, 0))
+      assertEquals(4, SlashIndexConverter(4).backslashIndex(3, 0))
+      assertEquals(3, SlashIndexConverter(4).backslashIndex(3, 1))
+
+      assertEquals(3, SlashIndexConverter(3).backslashIndex(3, 0))
+
    }
 }

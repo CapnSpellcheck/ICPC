@@ -3,30 +3,49 @@ package icpc.twothousandeighteen
 import util.*
 import java.io.InputStream
 import java.io.OutputStream
+import kotlin.collections.ArrayList
+import kotlin.math.max
 import kotlin.math.min
 
-class SlashIndexConverter(numRows: Int) {
-   val backslashAdj = numRows - 1 + if (numRows.and(1) == 1) 1 else 0
+/**
+ * This file contains a solution of the ICPC problem: https://icpc.kattis.com/problems/triangles3
+ */
 
+/**
+ * An important construct in my solution is the "slash line". The slash line is a particular angled
+ * line that runs between some set of rows. All forward slash lines are parallel, and all backslash lines are parallel.
+ * The lines are assigned an index. For the forward slash, the line going through the upper left corner is index 0,
+ * and each line to the right is the next index. For the backslash, it's the mirror image: the line going through the
+ * upper right corner is 0, and each line to the left is the next one.
+ * This converter helps by calculating the index number for a given row and column.
+ */
+class SlashIndexConverter(val numCols: Int) {
    inline fun forwardSlashIndex(row: Int, column: Int): Int = column + (row + 1)/2
-   inline fun backslashIndex(row: Int, column: Int): Int = column + (backslashAdj - row)/2
+   inline fun backslashIndex(row: Int, column: Int): Int = (numCols - 1 - column) + row/2
 }
 
-private fun compare(range: IntRange, int: Int): Int {
-   if (int < range.first)
-      return 1
-   if (int > range.last)
-      return -1
-   return 0
-}
-
+/**
+ * An abstract type for a staggered vertex grid. This allows for unit tests to easily build grids.
+ */
 abstract class StaggeredVertexGrid(val numRows: Int, val verticesPerRow: Int) {
    abstract fun horizontalSegmentFrom(row: Int, startColumn: Int): Boolean
-   abstract fun backslashSegmentBelow(row: Int, column: Int): Boolean
-   abstract fun forwardSlashSegmentBelow(row: Int, column: Int): Boolean
+   abstract fun backslashSegmentBelow(row: Int, column: Int, rowIsOdd: Boolean): Boolean
+   abstract fun forwardSlashSegmentBelow(row: Int, column: Int, rowIsOdd: Boolean): Boolean
 }
 
-class TextStaggeredVertexGrid(private val text: Array<DefaultString>, numRows: Int)
+// closed interval
+data class Interval(val start: Int, val end: Int) {
+   val width = end - start + 1
+
+   inline fun contains(first: Int, last: Int): Boolean {
+      return first >= this.start && last <= this.end
+   }
+}
+
+/**
+ * The grid with the text format given in the problem statement.
+ */
+class TextStaggeredVertexGrid(val text: Array<DefaultString>, numRows: Int)
    : StaggeredVertexGrid(numRows, 1 + text[0].lastIndexOf('x')/4)
 {
    override fun horizontalSegmentFrom(row: Int, startColumn: Int): Boolean {
@@ -34,21 +53,30 @@ class TextStaggeredVertexGrid(private val text: Array<DefaultString>, numRows: I
       return text[2*row][4*startColumn + shift] == '-'
    }
 
-   override fun backslashSegmentBelow(row: Int, column: Int): Boolean {
-      val shift = if (row.and(1) == 0) 1 else 3
+   override fun backslashSegmentBelow(row: Int, column: Int, rowIsOdd: Boolean): Boolean {
+      val shift = if (rowIsOdd) 1 else 3
       return text[2*row + 1][4*column + shift] == '\\'
    }
 
-   override fun forwardSlashSegmentBelow(row: Int, column: Int): Boolean {
-      val shift = if (row.and(1) == 0) -1 else 1
+   override fun forwardSlashSegmentBelow(row: Int, column: Int, rowIsOdd: Boolean): Boolean {
+      val shift = if (rowIsOdd) -1 else 1
       return text[2*row + 1][4*column + shift] == '/'
    }
 }
 
-private class SegmentInfoBuilder(baseOffset: Int, val outList: MutableList<IntRange>) {
-   private var cur = baseOffset
+/**
+ * The SegmentInfoBuilder is used to produce the horizontal segments in rows in the grid.
+ */
+private class SegmentInfoBuilder() {
+   private var cur = 0
    private var start = cur
    private var isOn = false
+   private var outList: MutableList<Interval> = mutableListOf()
+
+   fun start(baseOffset: Int, outList: MutableList<Interval>) {
+      cur = baseOffset
+      this.outList = outList
+   }
 
    inline fun next(segmentIsOn: Boolean) {
       if (segmentIsOn)
@@ -57,7 +85,7 @@ private class SegmentInfoBuilder(baseOffset: Int, val outList: MutableList<IntRa
          off()
    }
 
-   fun on() {
+   inline fun on() {
       if (!isOn) {
          start = cur
          isOn = true
@@ -65,25 +93,32 @@ private class SegmentInfoBuilder(baseOffset: Int, val outList: MutableList<IntRa
       cur += 1
    }
 
-   fun off() {
+   inline fun off() {
       finish()
       cur += 1
       isOn = false
    }
 
-   fun finish() {
+   inline fun finish() {
       if (isOn) {
-         outList.add(IntRange(start, cur - 1))
+         outList.add(Interval(start, cur - 1))
          isOn = false
       }
    }
 }
 
-fun buildHorizontalSegmentsInfo(grid: StaggeredVertexGrid): Array<out List<IntRange>> {
-   val rowSegmentsInfo = Array<MutableList<IntRange>>(grid.numRows) { ArrayList() }
+/**
+ * Build the horizontal segments. This is passed in to the main algorithm.
+ * Why calculate these separately, differently from the way I handle slash lines? While it was an accidental
+ * decision, I found that it results in a significant latency improvement.
+ * @return a list of the locations of horizontal line segments indexed by row
+ */
+fun buildHorizontalSegmentsInfo(grid: StaggeredVertexGrid): Array<out List<Interval>> {
+   val rowSegmentsInfo = Array<MutableList<Interval>>(grid.numRows) { ArrayList() }
+   val builder = SegmentInfoBuilder()
    for (row in 0 ..< grid.numRows) {
       val rowSegments = rowSegmentsInfo[row]
-      val builder = SegmentInfoBuilder(0, rowSegments)
+      builder.start(0, rowSegments)
       for (offset in 0 .. grid.verticesPerRow - 2) {
          builder.next(grid.horizontalSegmentFrom(row, offset))
       }
@@ -92,156 +127,246 @@ fun buildHorizontalSegmentsInfo(grid: StaggeredVertexGrid): Array<out List<IntRa
    return rowSegmentsInfo
 }
 
-fun buildBackslashSegmentsInfo(grid: StaggeredVertexGrid, converter: SlashIndexConverter): Array<List<IntRange>> {
-   // Get the highest index of backslash line from the converter
-   val lastColumn = grid.verticesPerRow - 1
-   val backslashSegmentsInfo = Array(1 + converter.backslashIndex(0, lastColumn)) {
-      mutableListOf<IntRange>()
-   }
-   // we'll build the ones that hit the 0th row first
-   var baseColumn = 0
-   for (i in converter.backslashIndex(0, 0) .. converter.backslashIndex(0, lastColumn)) {
-      val segments = backslashSegmentsInfo[i]
-      val builder = SegmentInfoBuilder(0, segments)
-      var row = 0
-      var column = baseColumn
-      var rowEven = false
-      while (row < grid.numRows - 1 && column < grid.verticesPerRow) {
-         builder.next(grid.backslashSegmentBelow(row, column))
-         row += 1
-         if (rowEven)
-            column += 1
-         rowEven = !rowEven
-      }
-      builder.finish()
-      baseColumn += 1
+/**
+ * The abstraction for a forward slash line. Some important observations about the geometry:
+ * The first N start at row 0, one per column, while following ones start at the rightmost column of an even numbered row.
+ * When going from an odd to even row, a given line shifts one column left.
+ * The slash line not only locates the line segments, it caches the 'current' one. This allows the main
+ * algorithm to NOT need to precompute them; instead it tells this object how far to seek down the line.
+ */
+class ForwardSlashLine(val grid: StaggeredVertexGrid, val lineIndex: Int) {
+   private val lastRow = min(2*lineIndex, grid.numRows - 1)
+   var currentSegment: Interval? = null; private set
+   private var curRow: Int
+   private var curColumn: Int
+   private var rowOdd: Boolean
+
+   init {
+      val lastColumn = grid.verticesPerRow - 1
+      curRow = if (lineIndex > lastColumn) 2*(lineIndex - lastColumn) - 1 else 0
+      curColumn = min(lineIndex, lastColumn)
+      rowOdd = curRow.and(1) == 0
    }
 
-   // build the ones that don't hit 0th row
-   var baseRow = 2
-   for (i in converter.backslashIndex(0, 0) - 1 downTo 0) {
-      val segments = backslashSegmentsInfo[i]
-      val builder = SegmentInfoBuilder(baseRow, segments)
-      var row = baseRow
-      var column = 0
-      var rowEven = false
-      while (row < grid.numRows - 1 && column < grid.verticesPerRow) {
-         builder.next(grid.backslashSegmentBelow(row, column))
-         row += 1
-         if (rowEven)
-            column += 1
-         rowEven = !rowEven
+   /**
+    * Find the segment along the line that touches `row` from above.
+    * @param row A monotonically increasing row number; after the function returns, `currentSegment.last` must
+    * hit `row` from above, otherwise it must be null.
+    */
+   fun advanceToRow(row: Int) {
+      if (currentSegment?.end.lt(row - 1)) {
+//         println("advanceToRow($row): forward slash line index $lineIndex: currentSegment nulled 1")
+         currentSegment = null
       }
-      builder.finish()
-      baseRow += 2
-   }
-   @Suppress("UNCHECKED_CAST")
-   return backslashSegmentsInfo as Array<List<IntRange>>
-}
-
-fun buildForwardSlashSegmentsInfo(grid: StaggeredVertexGrid, converter: SlashIndexConverter): Array<List<IntRange>> {
-   val lastColumn = grid.verticesPerRow - 1
-   val forwardSlashSegmentsInfo = Array(1 + converter.forwardSlashIndex(grid.numRows - 1, lastColumn)) {
-      mutableListOf<IntRange>()
-   }
-   for (i in 1 .. converter.forwardSlashIndex(grid.numRows - 2, lastColumn)) {
-      val segments = forwardSlashSegmentsInfo[i]
-      var row = 0
-      if (i > lastColumn)
-         row = 2*(i - lastColumn) - 1
-      val builder = SegmentInfoBuilder(row, segments)
-      var column = min(i, lastColumn)
-      var rowOdd = row.and(1) == 0
-      while (row < grid.numRows - 1) {
-         if (rowOdd && column == 0)
-            break
-         builder.next(grid.forwardSlashSegmentBelow(row, column))
-         row += 1
+      while (curRow < row) {
+         if (grid.forwardSlashSegmentBelow(curRow, curColumn, rowOdd)) {
+            val segmentStart = curRow
+            // go to the segment end
+            // TODO: DRY the row iteration
+            while (curRow < lastRow && (grid.forwardSlashSegmentBelow(curRow, curColumn, rowOdd))) {
+               if (rowOdd)
+                  curColumn -= 1
+               curRow += 1
+               rowOdd = !rowOdd
+            }
+            // curRow is 1 past the segment end
+            currentSegment = Interval(segmentStart, curRow - 1)
+         } else {
+//            println("advanceToRow($row): forward slash line index $lineIndex: currentSegment nulled 2")
+            currentSegment = null
+         }
          if (rowOdd)
-            column -= 1
+            curColumn -= 1
+         curRow += 1
          rowOdd = !rowOdd
       }
-      builder.finish()
    }
-   @Suppress("UNCHECKED_CAST")
-   return forwardSlashSegmentsInfo as Array<List<IntRange>>
 }
 
-fun List<IntRange>.rangeContaining(int: Int): IntRange? {
-   val index = this.binarySearch { segment ->
-      compare(segment, int)
+/**
+ * The abstraction for a backslash line. Some important observations about the geometry:
+ * The first N start at row 0, one per column, from the rightmost, while following ones start at the leftmost
+ * column of an odd numbered row.
+ * When going from an even to odd row, a given line shifts one column right.
+ * The slash line not only locates the line segments, it caches the 'current' one. This allows the main
+ * algorithm to NOT need to precompute them; instead it tells this object how far to seek down the line.
+ */
+class BackslashLine(val grid: StaggeredVertexGrid, val lineIndex: Int) {
+   private val lastRow = min(2*lineIndex + 1, grid.numRows - 1)
+   var currentSegment: Interval? = null; private set
+   private var curRow: Int
+   private var curColumn: Int
+   private var rowOdd: Boolean
+
+   init {
+      val lastColumn = grid.verticesPerRow - 1
+      curRow = if (lineIndex > lastColumn) 2*(lineIndex - lastColumn) else 0
+      curColumn = max(0, lastColumn - lineIndex)
+      rowOdd = curRow.and(1) == 0
    }
-   return if (index >= 0) this[index] else null
+
+   fun advanceToRow(row: Int) {
+      if (currentSegment?.end.lt(row - 1))
+         currentSegment = null
+      while (curRow < row) {
+         if (grid.backslashSegmentBelow(curRow, curColumn, rowOdd)) {
+            val segmentStart = curRow
+            // go to the segment end
+            // TODO: DRY the row iteration
+            while (curRow < lastRow && (grid.backslashSegmentBelow(curRow, curColumn, rowOdd))) {
+               if (!rowOdd)
+                  curColumn += 1
+               curRow += 1
+               rowOdd = !rowOdd
+            }
+            // curRow is 1 past the segment end
+            currentSegment = Interval(segmentStart, curRow - 1)
+         } else {
+            currentSegment = null
+         }
+         if (!rowOdd)
+            curColumn += 1
+         curRow += 1
+         rowOdd = !rowOdd
+      }
+   }
 }
 
+/**
+ * The main algorithm. Passed Kattis 3.65 sec. Iterates through the rows, taking the horizontal segments passed in.
+ * Finds all the UP pointing triangles for each row BEFORE finding any DOWN for the row, because the 'key' row
+ * (where the segment must exist in order for the triangles touching the row to exist) crosses the row for the DOWN.
+ * A Fenwick tree is used to compute the number of triangles made by the LEFT side, for each possible RIGHT side.
+ */
 fun triangles(
-   rowSegmentsInfo: Array<out List<IntRange>>,
-   forwardSlashSegmentsInfo: Array<out List<IntRange>>,
-   backslashSegmentsInfo: Array<out List<IntRange>>,
+   converter: SlashIndexConverter,
+   rowSegmentsInfo: Array<out List<Interval>>,
+   forwardSlashLines: Array<ForwardSlashLine>,
+   backslashLines: Array<BackslashLine>,
 ): Long {
-   val converter = SlashIndexConverter(rowSegmentsInfo.size)
    val lastRow = rowSegmentsInfo.lastIndex
    var triangleCount = 0L
-   var row = 0
-   while (row < rowSegmentsInfo.size) {
+   for (row in 0 ..< rowSegmentsInfo.size) {
       val rowSegments = rowSegmentsInfo[row]
+
+      // need to do all UP triangles before DOWN triangles in the row
       for (segmentInterval in rowSegments) {
-         val backslashSegmentUpCache = Array<IntRange?>(segmentInterval.width) { i ->
-            val backslashSegments = backslashSegmentsInfo[converter.backslashIndex(row, segmentInterval.first + i + 1)]
-            backslashSegments.rangeContaining(row - 1)
-         }
-         val forwardSlashSegmentDownCache = Array<IntRange?>(segmentInterval.width) { i ->
-            val forwardSlashSegments = forwardSlashSegmentsInfo[converter.forwardSlashIndex(row, segmentInterval.first + i + 1)]
-            forwardSlashSegments.rangeContaining(row)
-         }
+         val startingColumnForwardSlashTree = FenwickTree(segmentInterval.width)
+         var offsetInSegment = 0
+         val columnPopLists = Array<ArrayList<Int>>(segmentInterval.width) { ArrayList() }
+         var forwardSlashIndex = converter.forwardSlashIndex(row, segmentInterval.start)
+         var backslashIndex = converter.backslashIndex(row, segmentInterval.start + 1)
 
-         for (start in segmentInterval) {
-            // the line segment along the row starts at start and has length = end - start + 1
-            val forwardSlashSegmentsUp = forwardSlashSegmentsInfo[converter.forwardSlashIndex(row, start)]
-            val forwardSlashSegmentUp = forwardSlashSegmentsUp.rangeContaining(row - 1)
-//            println("row=$row start=$start forwardSlashSegmentUp=$forwardSlashSegmentUp")
+         for (column in segmentInterval.start .. segmentInterval.end) {
+            val length = offsetInSegment + 1
+            // forward slash segment is on left side, here I put in the tree 1 at the column where
+            // the forward slash 'dies' - it's `forwardSlashLengthUp` columns from `offsetInSegment`
+            forwardSlashLines[forwardSlashIndex].currentSegment?.let { forwardSlashSegmentUp ->
+               startingColumnForwardSlashTree.add(offsetInSegment, 1)
+               val forwardSlashLengthUp = row - forwardSlashSegmentUp.start
+               if (offsetInSegment + forwardSlashLengthUp < columnPopLists.size)
+                  columnPopLists[offsetInSegment + forwardSlashLengthUp].add(offsetInSegment)
+            }
 
-            // pointing up triangles: tip is above this row
-            // min(..) to clip tip row to bounds, i.e. row 0
-            for (length in 1 .. min(row, segmentInterval.last + 1 - start)) {
-               val tipRow = row - length
-               val backslashSegment = backslashSegmentUpCache[start + length - segmentInterval.first - 1]
-//               println("row=$row start=$start length=$length UP")
-               if (forwardSlashSegmentUp?.contains(tipRow..< row) == true && backslashSegment?.contains(tipRow..< row) == true) {
-//                  println("Up triangle at row=$row, start=$start, size=$length")
-                  triangleCount += 1
+            // I've avoided using iterators in the innermost loop.
+            // popping needs to be done before counting the triangles with forward slash segment
+            var popOffset = 0
+            run {
+               val popList = columnPopLists[offsetInSegment]
+               while (popOffset < popList.size) {
+                  startingColumnForwardSlashTree.add(popList[popOffset], -1)
+                  popOffset += 1
                }
             }
 
-            // pointing down triangles: tip is below this row
-            // min(..) to clip tip row to bounds, i.e. last row
-            val backslashSegmentsDown = backslashSegmentsInfo[converter.backslashIndex(row, start)]
-            val backslashSegmentDown = backslashSegmentsDown.rangeContaining(row)
-//            println("row=$row start=$start backslashSegmentDown=$backslashSegmentDown")
-
-            for (length in 1 .. min(lastRow - row, segmentInterval.last + 1 - start)) {
-               val tipRow = row + length
-               val forwardSlashSegment = forwardSlashSegmentDownCache[start + length - segmentInterval.first - 1]
-//               println("row=$row start=$start length=$length DOWN backslashSegmentDown=$backslashSegmentDown forwardSlashSegment=$forwardSlashSegment")
-
-               if (forwardSlashSegment?.contains(row ..< tipRow) == true && backslashSegmentDown?.contains(row ..< tipRow) == true) {
-//                  println("Down triangle at row=$row, start=$start, size=$length")
-                  triangleCount += 1
-               }
+            // backslash segment is on right side, at column `column` + 1
+            val backslashLine = backslashLines[backslashIndex]
+            backslashLine.currentSegment?.let { backslashSegmentUp ->
+               val backslashLengthUp = row - backslashSegmentUp.start
+               val maxLength = min(length, backslashLengthUp)
+               val trianglesHere = startingColumnForwardSlashTree.rangeQuery(length - maxLength, length - 1)
+//                println("ROW $row: UP: column $column: maxLength=$maxLength range=${length - maxLength}..${length - 1}, $trianglesHere triangles")
+               triangleCount += trianglesHere
             }
+
+            forwardSlashIndex += 1
+            backslashIndex -= 1
+            columnPopLists[offsetInSegment] = ArrayList<Int>()
+            offsetInSegment += 1
          }
       }
-      row += 1
+
+      // A little awkward, but there are no triangles pointing down from the bottom row. It's simpler to put this
+      // than force the slash logic to not crash on the last row. Plus, it's faster.
+      if (row == lastRow)
+         break
+
+      // before counting DOWN triangles, advance all slash lines that go through `row` to `row + 1`
+      for (forwardSlashIndex in converter.forwardSlashIndex(row, 0) .. converter.forwardSlashIndex(row, converter.numCols - 1)) {
+         forwardSlashLines[forwardSlashIndex].advanceToRow(row + 1)
+      }
+      for (backslashIndex in converter.backslashIndex(row, 0) downTo converter.backslashIndex(row, converter.numCols - 1)) {
+         backslashLines[backslashIndex].advanceToRow(row + 1)
+      }
+
+      // DOWN triangles
+      for (segmentInterval in rowSegments) {
+         val startingColumnBackslashTree = FenwickTree(segmentInterval.width)
+         var offsetInSegment = 0
+         val columnPopLists = Array<ArrayList<Int>>(segmentInterval.width) { ArrayList() }
+         var forwardSlashIndex = converter.forwardSlashIndex(row, segmentInterval.start + 1)
+         var backslashIndex = converter.backslashIndex(row, segmentInterval.start)
+
+         for (column in segmentInterval.start .. segmentInterval.end) {
+//            println("  segmentInterval=$segmentInterval column $column")
+            val length = offsetInSegment + 1
+            // backslash segment is on left side, at column `column`
+            backslashLines[backslashIndex].currentSegment?.let { backslashSegmentDown ->
+               startingColumnBackslashTree.add(offsetInSegment, 1)
+               val backslashLengthDown = backslashSegmentDown.end - row + 1
+               if (offsetInSegment + backslashLengthDown < columnPopLists.size)
+                  columnPopLists[offsetInSegment + backslashLengthDown].add(offsetInSegment)
+            }
+
+            // I've avoided using iterators in the innermost loop.
+            // popping needs to be done before counting the triangles with forward slash segment
+            var popOffset = 0
+            run {
+               val popList = columnPopLists[offsetInSegment]
+               while (popOffset < popList.size) {
+                  startingColumnBackslashTree.add(popList[popOffset], -1)
+                  popOffset += 1
+               }
+            }
+
+            // forward slash segment is on right side, at column `column` + 1
+            val forwardSlashLine = forwardSlashLines[forwardSlashIndex]
+            forwardSlashLine.currentSegment?.let { forwardSlashSegmentDown ->
+//               println("  forwardSlashLine currentSegment=$forwardSlashSegmentDown")
+               val forwardSlashLengthDown = forwardSlashSegmentDown.end - row + 1
+               val maxLength = min(length, forwardSlashLengthDown)
+               val trianglesHere = startingColumnBackslashTree.rangeQuery(length - maxLength, length - 1)
+//                println("  column $column: maxLength=$maxLength range=${length - maxLength}..${length - 1}, $trianglesHere triangles")
+               triangleCount += trianglesHere
+            }
+
+            forwardSlashIndex += 1
+            backslashIndex -= 1
+            offsetInSegment += 1
+         }
+      }
    }
    return triangleCount
 }
 
 fun triangles(grid: StaggeredVertexGrid): Long {
-   val converter = SlashIndexConverter(grid.numRows)
+   val converter = SlashIndexConverter(grid.verticesPerRow)
    val rowSegmentsInfo = buildHorizontalSegmentsInfo(grid)
-   val backslashSegmentsInfo = buildBackslashSegmentsInfo(grid, converter)
-   val forwardSlashSegmentsInfo = buildForwardSlashSegmentsInfo(grid, converter)
-   return triangles(rowSegmentsInfo, forwardSlashSegmentsInfo, backslashSegmentsInfo)
+   val lastForwardSlashIndex = converter.forwardSlashIndex(grid.numRows - 1, grid.verticesPerRow - 1)
+   val forwardSlashLines = Array<ForwardSlashLine>(1 + lastForwardSlashIndex) { i -> ForwardSlashLine(grid, i) }
+   val lastBackslashIndex = converter.backslashIndex(grid.numRows - 1, 0)
+   val backslashLines = Array<BackslashLine>(1 + lastBackslashIndex) { i -> BackslashLine(grid, i) }
+   return triangles(converter, rowSegmentsInfo, forwardSlashLines, backslashLines)
 }
 
 fun trianglesIO(inputStream: InputStream, outputStream: OutputStream) {

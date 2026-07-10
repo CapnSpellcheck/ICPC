@@ -79,3 +79,5 @@ fun <E : Enum<E>> EnumSet<E>.union(other: EnumSet<E>): EnumSet<E> {
    copy.addAll(other)
    return copy
 }
+
+inline fun Int?.lt(other: Int): Boolean = this != null && this < other

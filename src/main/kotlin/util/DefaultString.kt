@@ -7,7 +7,7 @@ class DefaultString(val string: String, val defaultChar: Char = ' ') : CharSeque
       get() = string.length
 
    override fun get(index: Int): Char {
-      return if (index < string.length) string[index] else defaultChar
+      return if (index < string.length && index >= 0) string[index] else defaultChar
    }
 
    override fun subSequence(startIndex: Int, endIndex: Int): CharSequence {
