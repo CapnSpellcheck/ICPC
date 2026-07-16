@@ -128,23 +128,21 @@ fun buildHorizontalSegmentsInfo(grid: StaggeredVertexGrid): Array<out List<Inter
 }
 
 /**
- * The abstraction for a forward slash line. Some important observations about the geometry:
- * The first N start at row 0, one per column, while following ones start at the rightmost column of an even numbered row.
- * When going from an odd to even row, a given line shifts one column left.
- * The slash line not only locates the line segments, it caches the 'current' one. This allows the main
- * algorithm to NOT need to precompute them; instead it tells this object how far to seek down the line.
+ * The abstraction for a slash line. All slash lines have an initialization of the properties: curRow, curColumn, rowOdd;
+ * and a stub function that determines whether the line continues below a certain coordinate.
  */
-class ForwardSlashLine(val grid: StaggeredVertexGrid, val lineIndex: Int) {
-   private val lastRow = min(2*lineIndex, grid.numRows - 1)
+abstract class SlashLine(val grid: StaggeredVertexGrid, val lineIndex: Int, defaultLastRow: Int) {
    var currentSegment: Interval? = null; private set
-   private var curRow: Int
-   private var curColumn: Int
-   private var rowOdd: Boolean
+   protected var curRow: Int = 0
+   protected var curColumn: Int = 0
+   protected var rowOdd: Boolean = false
+   private val lastRow = min(defaultLastRow, grid.numRows - 1)
+
+   abstract fun init()
+   abstract fun lineContinuesBelow(row: Int, column: Int, rowIsOdd: Boolean): Boolean
 
    init {
-      val lastColumn = grid.verticesPerRow - 1
-      curRow = if (lineIndex > lastColumn) 2*(lineIndex - lastColumn) - 1 else 0
-      curColumn = min(lineIndex, lastColumn)
+      init()
       rowOdd = curRow.and(1) == 0
    }
 
@@ -154,81 +152,77 @@ class ForwardSlashLine(val grid: StaggeredVertexGrid, val lineIndex: Int) {
     * hit `row` from above, otherwise it must be null.
     */
    fun advanceToRow(row: Int) {
-      if (currentSegment?.end.lt(row - 1)) {
-//         println("advanceToRow($row): forward slash line index $lineIndex: currentSegment nulled 1")
+      if (currentSegment?.end.lt(row - 1))
          currentSegment = null
-      }
       while (curRow < row) {
-         if (grid.forwardSlashSegmentBelow(curRow, curColumn, rowOdd)) {
+         if (lineContinuesBelow(curRow, curColumn, rowOdd)) {
             val segmentStart = curRow
             // go to the segment end
-            // TODO: DRY the row iteration
-            while (curRow < lastRow && (grid.forwardSlashSegmentBelow(curRow, curColumn, rowOdd))) {
-               if (rowOdd)
-                  curColumn -= 1
-               curRow += 1
-               rowOdd = !rowOdd
+            while (curRow < lastRow && (lineContinuesBelow(curRow, curColumn, rowOdd))) {
+               onNextRow()
             }
             // curRow is 1 past the segment end
             currentSegment = Interval(segmentStart, curRow - 1)
          } else {
-//            println("advanceToRow($row): forward slash line index $lineIndex: currentSegment nulled 2")
             currentSegment = null
          }
-         if (rowOdd)
-            curColumn -= 1
-         curRow += 1
-         rowOdd = !rowOdd
+         onNextRow()
       }
+   }
+
+   open fun onNextRow() {
+      curRow += 1
+      rowOdd = !rowOdd
+   }
+
+}
+
+/**
+ * The model of a concrete forward slash line. Some important observations about the geometry:
+ * The first N start at row 0, one per column, while following ones start at the rightmost column of an even numbered row.
+ * When going from an odd to even row, a given line shifts one column left.
+ * The slash line not only locates the line segments, it caches the 'current' one. This allows the main
+ * algorithm to NOT need to precompute them; instead it tells this object how far to seek down the line.
+ */
+class ForwardSlashLine(grid: StaggeredVertexGrid, lineIndex: Int) : SlashLine(grid, lineIndex, 2*lineIndex) {
+   override fun init() {
+      val lastColumn = grid.verticesPerRow - 1
+      curRow = if (lineIndex > lastColumn) 2*(lineIndex - lastColumn) - 1 else 0
+      curColumn = min(lineIndex, lastColumn)
+   }
+
+   override fun lineContinuesBelow(row: Int, column: Int, rowIsOdd: Boolean): Boolean =
+      grid.forwardSlashSegmentBelow(curRow, curColumn, rowOdd)
+
+   override fun onNextRow() {
+      if (rowOdd)
+         curColumn -= 1
+      super.onNextRow()
    }
 }
 
 /**
- * The abstraction for a backslash line. Some important observations about the geometry:
+ * The model of a concrete backslash line. Some important observations about the geometry:
  * The first N start at row 0, one per column, from the rightmost, while following ones start at the leftmost
  * column of an odd numbered row.
  * When going from an even to odd row, a given line shifts one column right.
  * The slash line not only locates the line segments, it caches the 'current' one. This allows the main
  * algorithm to NOT need to precompute them; instead it tells this object how far to seek down the line.
  */
-class BackslashLine(val grid: StaggeredVertexGrid, val lineIndex: Int) {
-   private val lastRow = min(2*lineIndex + 1, grid.numRows - 1)
-   var currentSegment: Interval? = null; private set
-   private var curRow: Int
-   private var curColumn: Int
-   private var rowOdd: Boolean
-
-   init {
+class BackslashLine(grid: StaggeredVertexGrid, lineIndex: Int) : SlashLine(grid, lineIndex, 2*lineIndex + 1){
+   override fun init() {
       val lastColumn = grid.verticesPerRow - 1
       curRow = if (lineIndex > lastColumn) 2*(lineIndex - lastColumn) else 0
       curColumn = max(0, lastColumn - lineIndex)
-      rowOdd = curRow.and(1) == 0
    }
 
-   fun advanceToRow(row: Int) {
-      if (currentSegment?.end.lt(row - 1))
-         currentSegment = null
-      while (curRow < row) {
-         if (grid.backslashSegmentBelow(curRow, curColumn, rowOdd)) {
-            val segmentStart = curRow
-            // go to the segment end
-            // TODO: DRY the row iteration
-            while (curRow < lastRow && (grid.backslashSegmentBelow(curRow, curColumn, rowOdd))) {
-               if (!rowOdd)
-                  curColumn += 1
-               curRow += 1
-               rowOdd = !rowOdd
-            }
-            // curRow is 1 past the segment end
-            currentSegment = Interval(segmentStart, curRow - 1)
-         } else {
-            currentSegment = null
-         }
-         if (!rowOdd)
-            curColumn += 1
-         curRow += 1
-         rowOdd = !rowOdd
-      }
+   override fun lineContinuesBelow(row: Int, column: Int, rowIsOdd: Boolean): Boolean =
+      grid.backslashSegmentBelow(curRow, curColumn, rowOdd)
+
+   override fun onNextRow() {
+      if (!rowOdd)
+         curColumn += 1
+      super.onNextRow()
    }
 }
 
