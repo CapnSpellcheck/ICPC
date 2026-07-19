@@ -1,6 +1,7 @@
 package icpc.twothousandseventeen
 
 import util.hardAssert
+import util.printDebug
 import util.union
 import java.io.InputStream
 import java.io.OutputStream
@@ -11,13 +12,6 @@ import kotlin.math.max
 /**
  * This file contains a solution of the ICPC problem: https://icpc.kattis.com/problems/clue
  */
-
-private const val DEBUG = false
-fun printDebug(cs: CharSequence) {
-   if (DEBUG) {
-      println(cs)
-   }
-}
 
 /**
  * A card in Clue. Players can have any subset of them, so they are in a single class. The `type` property

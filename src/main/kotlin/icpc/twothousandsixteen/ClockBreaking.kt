@@ -4,6 +4,7 @@ import lcd7.*
 import lcd7.Segment.*
 import lcd7.SegmentCondition.*
 import util.allIndexed
+import util.printDebug
 import java.io.InputStream
 import java.io.OutputStream
 
@@ -14,13 +15,6 @@ import java.io.OutputStream
  * to the output of a known correct solution for 1000 randomly generated inputs and mine matched
  * perfectly.
  */
-
-private const val DEBUG = false
-fun printDebug(cs: CharSequence) {
-   if (DEBUG) {
-      println(cs)
-   }
-}
 
 /**
  * A TimeDisplayAssessment contains a DigitCondition for each of the TimeDigits, and a SegmentCondition

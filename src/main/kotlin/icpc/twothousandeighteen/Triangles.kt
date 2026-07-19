@@ -33,15 +33,6 @@ abstract class StaggeredVertexGrid(val numRows: Int, val verticesPerRow: Int) {
    abstract fun forwardSlashSegmentBelow(row: Int, column: Int, rowIsOdd: Boolean): Boolean
 }
 
-// closed interval
-data class Interval(val start: Int, val end: Int) {
-   val width = end - start + 1
-
-   inline fun contains(first: Int, last: Int): Boolean {
-      return first >= this.start && last <= this.end
-   }
-}
-
 /**
  * The grid with the text format given in the problem statement.
  */
